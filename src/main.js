@@ -1,19 +1,82 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
-// ── UI claim ZCode: 4 tính năng đúng theo phạm vi hiện tại ──
-// 1) nhập provider (JWT/deviceMid/userId/username/email/zaiBusinessToken)
+// ── UI claim ZCode ──
+// 0) dang nhap tu dong: bam nut -> Rust init /oauth/cli/init -> san sang -> mo trinh duyet mac dinh
+//    (https://zcode.z.ai/app/oauth/login?...) cho user nhap user/pass tren web ZCode -> Rust poll
+//    /oauth/cli/poll/{flow_id} -> tu fill JWT/deviceMid/userId. Hai buoc webview embed trong app
+//    khong lam: Agent2API cung mo trinh duyet ngoai (login/zcode.rs + oauth.rs), khong dung webview
+//    nhung trong app (webview nhung trong app dan den phishing/storage risk, browser cua user
+//    da dang nhap san la tot nhat).
+// 1) nhap provider (JWT/deviceMid/userId/username/email/zaiBusinessToken)
 // 2) claim (preview → captcha slider → claim plan) qua ui/aliyun-captcha.js solve()
 // 3) check tài khoản (query_balance / refreshQuota — quota, plans, balances)
 // 4) xuất định dạng router (export_router_json)
-// NGOÀI PHẠM VI (không làm): scheduler 18:00 VN, tray notification,
-// traceless pool background (ui/zcode-captcha-pool.js), claim history UI,
-// Docker/headless. Rust history (persistence.rs) vẫn giữ ở backend.
 
 const $ = (id) => document.getElementById(id);
 let selectedPlanId = null;
 let captchaVerifyParam = "";
 let captchaRegion = "";
 let jitterTimer = null;
+let loginTimer = null;
+
+// ── Dang nhap ZCode tu dong: init -> mo browser -> poll ──
+// Luong dung nhu Agent2API (oauth.rs + login/zcode.rs):
+//  start_zcode_login -> CliLogin::start -> auth_url (da them redirect trung gian)
+//  -> frontend openUrl(auth_url) bang trinh duyet mac dinh -> poll moi poll_interval_sec
+//  -> status=ready -> {token, user.user_id, zai|bigmodel.access_token}
+// Tai day khong can coding_key::resolve (do la buoc doi access_token thanh API key cho
+// inference cua Agent2API; claimer chi can JWT/deviceMid/userId). Khong co webview nhung
+// trong app: Agent2API cung mo trinh duyet ngoai, browser cua user da dang nhap san.
+$("btnLogin").onclick = async () => {
+  if (loginTimer) { clearInterval(loginTimer); loginTimer = null; }
+  $("loginStatus").textContent = "Dang khoi tao dang nhap...";
+  let start;
+  try {
+    start = await invoke("start_zcode_login");
+  } catch (e) {
+    $("loginStatus").textContent = "Loi khoi tao: " + e;
+    return;
+  }
+  $("loginStatus").textContent = "Dang mo trinh duyet de dang nhap...";
+  try {
+    await openUrl(start.auth_url);
+  } catch (e) {
+    $("loginStatus").textContent = "Mo browser that bai: " + e + " — hay copy dia chi nay mo tay: " + start.auth_url;
+    return;
+  }
+  $("loginStatus").textContent = "Da mo browser — hay nhap user/pass tren web ZCode de xac thuc. Dang cho ban xac thuc (poll moi vai giay)...";
+  const deadline = (start.expires_at ? start.expires_at * 1000 : Date.now() + 5 * 60 * 1000);
+  const interval = Math.max(1000, (start.poll_interval_sec || 3) * 1000);
+  let attempt = 0;
+  loginTimer = setInterval(async () => {
+    attempt++;
+    if (Date.now() > deadline) {
+      clearInterval(loginTimer); loginTimer = null;
+      $("loginStatus").textContent = "Het han dang nhap (5 phut). Bam nut dang nhap lai.";
+      return;
+    }
+    try {
+      const res = await invoke("poll_zcode_login", { flowId: start.flow_id });
+      if (res?.status === "pending") return;
+      clearInterval(loginTimer); loginTimer = null;
+      if (res?.status === "ready" && res?.credentials) {
+        const c = res.credentials;
+        $("jwt").value = c.jwt || "";
+        if (c.device_mid) $("deviceMid").value = c.device_mid;
+        if (c.user_id) $("userId").value = c.user_id;
+        await saveCfg();
+        $("loginStatus").textContent = "Dang nhap thanh cong. JWT/deviceMid/userId da tu dien. Username/email khong lay duoc tu dang nhap web (ZCode OAuth chi tra user_id) — hay nhap tay neu can export.";
+        refreshQuota();
+      } else if (res?.status === "error") {
+        $("loginStatus").textContent = "Dang nhap that bai: " + res.error;
+      }
+    } catch (e) {
+      clearInterval(loginTimer); loginTimer = null;
+      $("loginStatus").textContent = "Loi poll: " + e;
+    }
+  }, interval);
+};
 
 $("genMid").onclick = async () => {
   $("deviceMid").value = await invoke("generate_device_mid");

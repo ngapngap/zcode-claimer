@@ -30,7 +30,10 @@
 
     <div class="card">
       <h2>1. Login ZCode</h2>
-      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken" autocomplete="off" /></label>
+      <button id="btnLogin" class="primary" type="button">Đăng nhập ZCode (mở web)</button>
+      <p class="hint">Bấm nút, browser mặc định mở trang đăng nhập ZCode, nhập user/pass, xác thực xong quay lại app — các trường dưới sẽ tự điền:</p>
+      <div id="loginStatus" class="result" aria-live="polite"></div>
+      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken (tự điền sau login, hoặc dán tay)" autocomplete="off" /></label>
       <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định theo account)</span>
         <input id="deviceMid" type="text" placeholder="UUID" autocomplete="off" />
         <button id="genMid" class="small" type="button">Tạo mới</button>
