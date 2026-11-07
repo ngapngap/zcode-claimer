@@ -49,15 +49,13 @@ pub struct AutoClawBalanceResult {
 }
 
 fn signed_auth_headers(token: &str) -> Vec<(String, String)> {
-    use md5::Digest as _;
     let timestamp = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)) as i64;
     let ts = timestamp.max(0).to_string();
-    let mut hasher = md5::Md5::new();
-    hasher.update(format!("{}&{}&{}", AUTH_APP_ID, ts, AUTH_APP_KEY).as_bytes());
-    let sign = format!("{:x}", hasher.finalize());
+    let digest = md5::compute(format!("{}&{}&{}", AUTH_APP_ID, ts, AUTH_APP_KEY).as_bytes());
+    let sign = format!("{:x}", digest);
     let trace = {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now()
