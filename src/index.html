@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZCode Claimer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <h1>ZCode Claimer</h1>
+    <p class="subtitle">Claim Start Plan hàng ngày → export JSON cho router</p>
+
+    <div class="card" id="step-login">
+      <h2>1. Login ZCode</h2>
+      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken" /></label>
+      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định)</span>
+        <input id="deviceMid" type="text" placeholder="UUID" />
+        <button id="genMid" class="small">Tạo mới</button>
+      </label>
+      <label>User ID <input id="userId" type="text" placeholder="userId" /></label>
+      <label>Username <input id="username" type="text" placeholder="username" /></label>
+      <label>Email <input id="email" type="text" placeholder="email" /></label>
+      <label>ZAI Business Token <input id="bizToken" type="text" placeholder="zaiBusinessToken" /></label>
+      <button id="btnPreview" class="primary">Báo activation + Preview套餐</button>
+      <div id="previewResult" class="result"></div>
+    </div>
+
+    <div class="card" id="step-claim" style="display:none">
+      <h2>2. Claim套餐</h2>
+      <div id="plansList"></div>
+      <button id="btnCaptcha" class="primary">Làm captcha (slider)</button>
+      <button id="btnClaim" class="primary" disabled>Lãnh套餐</button>
+      <div id="claimResult" class="result"></div>
+    </div>
+
+    <div class="card" id="step-export" style="display:none">
+      <h2>3. Export router</h2>
+      <button id="btnExport" class="primary">Tạo file export.json</button>
+      <pre id="exportJson" class="code"></pre>
+      <button id="btnDownload" class="small">Tải về</button>
+      <p class="hint">Import: <code>POST /api/providers</code> với body là JSON trên (router).</p>
+    </div>
+  </div>
+
+  <!-- Aliyun captcha container - SDK sẽ inject slider vào đây -->
+  <div id="captcha-container" style="position:fixed;left:-9999px;top:0;width:360px;height:40px;"></div>
+  <div id="captcha-button" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;"></div>
+
+  <script src="https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
