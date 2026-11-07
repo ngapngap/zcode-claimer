@@ -24,7 +24,7 @@ let loginTimer = null;
 // Luong dung nhu Agent2API (oauth.rs + login/zcode.rs):
 //  start_zcode_login -> CliLogin::start -> auth_url (da them redirect trung gian)
 //  -> frontend openUrl(auth_url) bang trinh duyet mac dinh -> poll moi poll_interval_sec
-//  -> status=ready -> {token, user.user_id, zai|bigmodel.access_token}
+//  -> status=ready -> {token, user.user_id, data.zai.access_token} (ban quooc te Intl, provider=zai)
 // Tai day khong can coding_key::resolve (do la buoc doi access_token thanh API key cho
 // inference cua Agent2API; claimer chi can JWT/deviceMid/userId). Khong co webview nhung
 // trong app: Agent2API cung mo trinh duyet ngoai, browser cua user da dang nhap san.
@@ -68,12 +68,12 @@ $("btnLogin").onclick = async () => {
         await saveCfg();
         $("loginStatus").textContent = "Dang nhap thanh cong. JWT/deviceMid/userId da tu dien. Username/email khong lay duoc tu dang nhap web (ZCode OAuth chi tra user_id) — hay nhap tay neu can export.";
         refreshQuota();
-      } else if (res?.status === "error") {
-        $("loginStatus").textContent = "Dang nhap that bai: " + res.error;
+      } else {
+        $("loginStatus").textContent = "Dang nhap that bai: " + JSON.stringify(res);
       }
     } catch (e) {
       clearInterval(loginTimer); loginTimer = null;
-      $("loginStatus").textContent = "Loi poll: " + e;
+      $("loginStatus").textContent = "Dang nhap that bai: " + e;
     }
   }, interval);
 };
