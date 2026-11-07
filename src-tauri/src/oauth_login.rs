@@ -1,22 +1,22 @@
-//! ZCode 登录：CLI 轮询流程（自 Agent2API
-//! `desktop-tauri/src-tauri/server/src/server/core/providers/zcode/oauth.rs`
-//! + `src/server/core/login/zcode.rs` 移植，核心逻辑逐字守住）：
+//! ZCode dang nhap: luong CLI poll (giong Agent2API
+//! `providers/zcode/oauth.rs`):
 //!
-//! 1. 生成 poll token（32 随机字节 hex）—— init 与 poll 共用 Bearer
+//! 1. Tao poll token (32 byte ngau nhien hex) dung chung Bearer cho init va poll
 //! 2. POST https://zcode.z.ai/api/v1/oauth/cli/init
-//!    body {"provider": "bigmodel"|"zai"} → {flow_id, authorize_url, expires_at, poll_interval_sec}
-//! 3. authorize_url 补中转页参数（两地参数名不同：Intl=redirect_uri, Cn=redirect）
-//!    后交给前端打开系统浏览器 —— 浏览器不会回到本机，授权在服务端记完
-//! 4. GET /api/v1/oauth/cli/poll/{flow_id} 每 poll_interval_sec 一次，
-//!    直到 status=ready → {token, user.user_id, data[zai|bigmodel].access_token}
+//!    body {"provider": "zai"} -> {flow_id, authorize_url, expires_at, poll_interval_sec}
+//! 3. authorize_url duoc them tham so trang trung gian (ban quooc te = redirect_uri)
+//!    roi giao cho frontend mo trinh duyet mac dinh
+//! 4. GET /api/v1/oauth/cli/poll/{flow_id} moi poll_interval_sec mot lan,
+//!    den khi status=ready -> {token, user.user_id, data.zai.access_token}
 //!
-//! 移植时删掉的：LoginService 任务表（前端直接用 Tauri State + 前端轮询
-//! + 5 分钟本地超时兜住）、coding_key::resolve（那是推理凭证换取，claimer
-//! 只需要 JWT/deviceMid/userId，没有推理转发；username/email 官方登录
-//! 本来就不返回，沿用本 claimer 现有的手填字段）。
+//! Ban quooc te (Intl): provider="zai", param=redirect_uri, doc data.zai.
+//! Giong Agent2API Region::Intl. Base URL zcode.z.ai giu nguyen nhu Agent2API.
 //!
-//! 错误语义（逐条照 Agent2API）：5xx/408/429/断网/200 畸形体 → pending；
-//! 4xx 其余、信封 code!=0、failed → 致命，立刻结束并报错。
+//! Da bo: LoginService task table (frontend poll truc tiep qua Tauri State),
+//! coding_key::resolve (chi can JWT/deviceMid/userId). Username/email thu cong.
+//!
+//! Ngu nghia loi (theo Agent2API): 5xx/408/429/mat mang/200 sai body -> pending;
+//! 4xx con lai, envelope code!=0, failed -> fatal, ket thuc ngay va bao loi.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,7 +33,7 @@ pub struct LoginStart {
     pub poll_interval_sec: i64,
 }
 
-/// 一次轮询的结果（None = 还没授权完；Err = 致命失败）
+/// Ket qua mot lan poll (None = chua xac thuc xong; Err = fatal)
 #[derive(Clone, Debug)]
 pub enum PollResult {
     Pending,
@@ -48,6 +48,7 @@ pub struct ZcodeLoginCredentials {
     pub device_mid: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct CliLogin {
     pub flow_id: String,
     pub poll_token: String,
@@ -56,26 +57,8 @@ pub struct CliLogin {
     pub device_mid: String,
 }
 
-/// Helper public de main.rs reconstruct tu State (single-flight, khong expose qua invoke).
-pub struct CliLoginSendable {
-    pub flow_id: String,
-    pub poll_token: String,
-    pub device_mid: String,
-}
-
-pub async fn poll_sendable(login: &CliLoginSendable) -> Result<PollResult, String> {
-    let tmp = CliLogin {
-        flow_id: login.flow_id.clone(),
-        poll_token: login.poll_token.clone(),
-        poll_interval_sec: 3,
-        expires_at: None,
-        device_mid: login.device_mid.clone(),
-    };
-    poll(&tmp).await
-}
-
 fn region_provider() -> &'static str {
-    "bigmodel"
+    "zai"
 }
 
 fn app_version() -> String {
@@ -83,10 +66,6 @@ fn app_version() -> String {
 }
 
 fn random_hex_32() -> String {
-    let mut bytes = [0u8; 32];
-    // 取不到随机数时回落到时间戳串：poll token 只是本次流程关联标识，
-    // 上游不拿它做鉴权，只用来把 init 与 poll 归到同一 flow。
-    // CSPRNG: dùng getrandom::fill (API cua getrandom 0.3).
     let mut bytes = [0u8; 32];
     if getrandom::fill(&mut bytes).is_err() {
         let fallback = format!(
@@ -121,10 +100,11 @@ fn envelope_error(payload: &Value) -> Option<String> {
     Some(format!("ZCode dang nhap that bai ({code}): {message}"))
 }
 
-/// 与 Agent2API 的 `apply_interstitial` 逐字一致：语义是 "set"（同名替换）、
-/// 整体编码（内层 `zcode%3A%2F%2F` 再编一次得 `%253A%252F%252F`）。
+/// Giong Agent2API `apply_interstitial`: semantics "set" (thay doi cung ten),
+/// encode toan bo (inner `zcode%3A%2F%2F` encode lai thanh `%253A%252F%252F`).
+/// Ban quooc te dung param `redirect_uri`, ban Trung Quoc dung `redirect`.
 fn apply_interstitial(authorize_url: &str) -> String {
-    let param = "redirect"; // Cn. Intl tai day bi loai; neu mo lai thi them redirect_uri.
+    let param = "redirect_uri";
     let target = claim::urlencode(&format!(
         "https://zcode.z.ai/app/oauth/login?redirect=zcode%3A%2F%2Foauth%2Fcallback&app_version={}",
         app_version()
@@ -173,17 +153,22 @@ fn required_str(data: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("ZCode dang nhap: thieu {key} trong phan hoi"))
 }
 
-/// 发起登录：init 一次，拿到 flow_id + auth_url 后立刻交回前端打开浏览器。
-pub async fn start() -> Result<(LoginStart, CliLogin), String> {
+/// Khoi tao dang nhap: init 1 lan, lay flow_id + auth_url roi giao ve frontend mo browser.
+/// `device_mid` do caller (main.rs) cung cap tu persistence de on dinh theo account.
+pub async fn start(device_mid: &str) -> Result<(LoginStart, CliLogin), String> {
+    let device_mid = device_mid.trim().to_string();
+    if device_mid.is_empty() {
+        return Err("ZCode dang nhap: thieu device_mid (can on dinh theo account)".to_string());
+    }
     let poll_token = random_hex_32();
-    let url = format!("https://zcode.z.ai/api/v1/oauth/cli/init");
+    let url = "https://zcode.z.ai/api/v1/oauth/cli/init";
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(15_000))
         .build()
         .map_err(|e| e.to_string())?;
     let body = serde_json::json!({ "provider": region_provider() });
     let response = client
-        .post(&url)
+        .post(url)
         .header("authorization", format!("Bearer {poll_token}"))
         .header("content-type", "application/json")
         .json(&body)
@@ -209,18 +194,13 @@ pub async fn start() -> Result<(LoginStart, CliLogin), String> {
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_POLL_INTERVAL_SEC);
 
-    let token_state = std::sync::Arc::new(tokio::sync::Mutex::new(poll_token.clone()));
-    // device_mid 与凭证随落盘（跨请求稳定）：login 时生成一次，poll 时带走。
-    let device_mid = uuid::Uuid::new_v4().to_string();
-
     let login = CliLogin {
         flow_id: flow_id.clone(),
         poll_token,
         poll_interval_sec,
         expires_at,
-        device_mid: device_mid.clone(),
+        device_mid,
     };
-    let _ = token_state;
     let auth_url = apply_interstitial(&authorize_url);
     Ok((
         LoginStart {
@@ -233,7 +213,7 @@ pub async fn start() -> Result<(LoginStart, CliLogin), String> {
     ))
 }
 
-/// 轮询一次（网络/5xx/408/429/200 畸形体 → Pending；其余致命 Err）
+/// Poll 1 lan (mang/5xx/408/429/200 sai body -> Pending; con lai fatal Err)
 pub async fn poll(login: &CliLogin) -> Result<PollResult, String> {
     let url = format!("https://zcode.z.ai/api/v1/oauth/cli/poll/{}", login.flow_id);
     let client = reqwest::Client::builder()
@@ -285,6 +265,9 @@ pub async fn poll(login: &CliLogin) -> Result<PollResult, String> {
                 .map(str::trim)
                 .unwrap_or("")
                 .to_string();
+            if jwt.is_empty() {
+                return Err("ZCode dang nhap: token rong khi ready".to_string());
+            }
             let user_id = data
                 .get("user")
                 .and_then(|v| v.get("user_id"))
