@@ -1,5 +1,4 @@
-//! ZCode claim: preview + claim. Ported from Agent2API
-//! `desktop-tauri/src-tauri/server/src/server/core/providers/zcode/claim.rs`
+//! ZCode claim: preview + claim.
 //!
 //! Removed: plugin_host, routing, tracing, 27 other providers, Images API.
 //! Kept: preview/claim 2 endpoints, X-Device-Mid, captcha headers, error codes.
@@ -163,6 +162,15 @@ fn parse_plan(raw: &Value) -> Option<ClaimablePlan> {
     })
 }
 
+/// Cat chuoi theo so ky tu (khong cat giua ky tu UTF-8) de kem body server vao loi.
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect::<String>() + "..."
+    }
+}
+
 pub async fn preview(jwt: &str, device_mid: &str) -> Result<PreviewOutcome, String> {
     let url = format!("{ZCODE_ORIGIN}{PREVIEW_PATH}?app_version={}&platform={}",
         urlencode(&app_version()),
@@ -177,14 +185,45 @@ pub async fn preview(jwt: &str, device_mid: &str) -> Result<PreviewOutcome, Stri
     if !device_mid.trim().is_empty() {
         req = req.header("X-Device-Mid", device_mid.trim());
     }
-    let resp = req.send().await.map_err(|e| e.to_string())?;
-    if resp.status().as_u16() == 404 { return Ok(PreviewOutcome::NotDeployed); }
-    if resp.status().as_u16() == 401 { return Err("Phien dang nhap het han".to_string()); }
-    let payload: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let resp = req.send().await
+        .map_err(|e| format!("preview: loi ket noi toi server: {}", e))?;
+    let status = resp.status().as_u16();
+    if status == 404 { return Ok(PreviewOutcome::NotDeployed); }
+    if status == 401 { return Err("Phien dang nhap het han (HTTP 401)".to_string()); }
+    let body = resp.text().await
+        .map_err(|e| format!("preview: doc phan hoi that bai (HTTP {}): {}", status, e))?;
+    if !(200..300).contains(&status) {
+        return Err(format!(
+            "preview that bai: server tra HTTP {} | body: {}",
+            status,
+            truncate_chars(body.trim(), 300)
+        ));
+    }
+    let payload: Value = serde_json::from_str(&body).map_err(|e| {
+        format!(
+            "preview: server tra ve khong phai JSON (HTTP {}): {} | body: {}",
+            status,
+            e,
+            truncate_chars(body.trim(), 300)
+        )
+    })?;
     let code = payload.get("code").and_then(Value::as_i64).unwrap_or(0);
     let data = payload.get("data");
-    if code != 0 || data.is_none() {
-        return Err(format!("preview failed ({}): {}", code, error_msg(&payload)));
+    if code != 0 {
+        return Err(format!(
+            "preview that bai: server tra code {} (HTTP {}) — {} | body: {}",
+            code,
+            status,
+            error_msg(&payload),
+            truncate_chars(body.trim(), 300)
+        ));
+    }
+    if data.is_none() {
+        return Err(format!(
+            "preview: server tra code 0 nhung khong co data (HTTP {}) — co the chua co goi nao de preview | body: {}",
+            status,
+            truncate_chars(body.trim(), 300)
+        ));
     }
     let plans = data.and_then(|v| v.get("plans")).and_then(Value::as_array)
         .map(|items| items.iter().filter_map(parse_plan).collect())
@@ -243,11 +282,16 @@ pub async fn claim(
         None if status == 401 => ClaimFailure::LoginRequired,
         None => ClaimFailure::HttpError,
     };
+    // Khong co biz code thi kem ca HTTP status vao message de UI bao loi cu the.
+    let message = match biz_code {
+        Some(_) => error_msg(&payload),
+        None => format!("HTTP {}: {}", status, error_msg(&payload)),
+    };
     Ok(ClaimOutcome::Failed {
         plan_id: plan_id.to_string(),
         failure,
         code: biz_code.unwrap_or(i64::from(status)),
-        message: error_msg(&payload),
+        message,
         failure_ends_at: plan.and_then(|v| v.get("ends_at")).and_then(Value::as_i64),
     })
 }
@@ -259,7 +303,7 @@ fn error_msg(payload: &Value) -> String {
             if !t.is_empty() { return t.to_string(); }
         }
     }
-    "HTTP error".to_string()
+    "khong co thong bao loi tu server".to_string()
 }
 
 pub fn urlencode(s: &str) -> String {

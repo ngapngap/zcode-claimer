@@ -23,7 +23,7 @@ User (Windows)
 
 ## Traceless pool (background inference)
 
-File `ui/zcode-captcha-pool.js` (copy nguyên từ Agent2API) — vòng đời pool:
+File `ui/zcode-captcha-pool.js` (copy nguyên từ bản gốc) — vòng đời pool:
 
 - Poll `GET /api/zcode/captcha` mỗi 2.5s (`maxPerRound=1`, backoff 3–15s)
 - Target 3 token, đẩy qua `window.workbuddyDesktop.pushZcodeCaptchaTokens` → Rust `push()`
@@ -42,7 +42,7 @@ File `ui/zcode-captcha-pool.js` (copy nguyên từ Agent2API) — vòng đời p
 
 ## Nguồn code
 
-- `claim.rs` ← `Agent2API/.../providers/zcode/claim.rs` (838 dòng → port tối thiểu, bỏ plugin_host/routing/tracing)
+- `claim.rs` (838 dòng bản gốc → port tối thiểu, bỏ plugin_host/routing/tracing)
 - `captcha_config.rs` ← cùng file (phần `parse_captcha_config`)
-- `activation.rs` ← `providers/zcode/activation.rs` (gọn lại 2 events)
+- `activation.rs` (gọn lại 2 events)
 - `aliyun-captcha.js` + `zcode-captcha-pool.js` — copy verbatim 773+253 dòng

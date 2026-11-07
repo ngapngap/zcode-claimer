@@ -2,7 +2,7 @@
 
 Minimal Windows Tauri app — chỉ làm đúng 1 việc: **claim ZCode Start Plan hàng ngày** và **export JSON chứa token để dùng tiếp**.
 
-Tách ra từ `Agent2API` (fork), lột bỏ 95% phần thừa:
+Chỉ giữ phần cần thiết, lột bỏ 95% phần thừa:
 
 - ❌ Bỏ: `plugin_host`, 27 providers còn lại, Images API, routing groups, tracing, Agent page / mobile PWA / APK, deepseek-web, AI assistant
 - ✅ Giữ: `zcode/claim.rs` (logic claim), `zcode/activation.rs`, `zcode/captcha.rs`, `ui/aliyun-captcha.js` (đã dịch sang tiếng Việt)
@@ -93,4 +93,4 @@ pnpm tauri build
 
 Yêu cầu: Node 20+, Rust stable, WebView2 (Windows 10/11 có sẵn).
 
-Không đụng vào Agent2API — chỉ tham khảo protocol.
+Chỉ tham khảo protocol ZCode, không đụng vào bản gốc.

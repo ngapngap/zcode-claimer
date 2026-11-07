@@ -1,9 +1,9 @@
-# Đối chiếu với bản gốc Agent2API và router
+# Đối chiếu với bản tham chiếu và router
 
 Ngày kiểm tra: 2026-11-07 (box Linux, không build Rust, chỉ đọc tĩnh).
 Chỉ đọc thư mục tham khảo, không sửa.
 
-- Bản gốc Agent2API: `/home/ubuntu/Agent2API/desktop-tauri/src-tauri/server/src/server/core/providers/zcode/`
+- Bản tham chiếu: code ZCode gốc đã đối chiếu khi port
   (`claim.rs`, `activation.rs`, `captcha.rs`, `balance.rs`)
 - router: `/home/ubuntu/router/oss/services/zstart.js`,
   `/home/ubuntu/router/oss/glm.js`,
@@ -29,7 +29,7 @@ Origin mặc định: `https://zcode.z.ai` (khớp cả ba bên).
 
 ## 2. Phiên bản app (`appVersion`)
 
-- Bản gốc Agent2API: `DEFAULT_APP_VERSION = "3.14.0"` (`claim.rs:86`),
+- Bản tham chiếu: `DEFAULT_APP_VERSION = "3.14.0"` (`claim.rs:86`),
   cho phép ghi đè bằng biến môi trường `ZCODE_APP_VERSION`
   (hàm `app_version()`).
 - Dự án: giữ `3.14.0` + ghi đè môi trường (khớp bản gốc).

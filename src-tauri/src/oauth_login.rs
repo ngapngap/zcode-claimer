@@ -1,5 +1,4 @@
-//! ZCode dang nhap: luong CLI poll (giong Agent2API
-//! `providers/zcode/oauth.rs`):
+//! ZCode dang nhap: luong CLI poll (theo protocol ZCode):
 //!
 //! 1. Tao poll token (32 byte ngau nhien hex) dung chung Bearer cho init va poll
 //! 2. POST https://zcode.z.ai/api/v1/oauth/cli/init
@@ -10,12 +9,12 @@
 //!    den khi status=ready -> {token, user.user_id, data.zai.access_token}
 //!
 //! Ban quooc te (Intl): provider="zai", param=redirect_uri, doc data.zai.
-//! Giong Agent2API Region::Intl. Base URL zcode.z.ai giu nguyen nhu Agent2API.
+//! Base URL: https://zcode.z.ai.
 //!
 //! Da bo: LoginService task table (frontend poll truc tiep qua Tauri State),
 //! coding_key::resolve (chi can JWT/deviceMid/userId). Username/email thu cong.
 //!
-//! Ngu nghia loi (theo Agent2API): 5xx/408/429/mat mang/200 sai body -> pending;
+//! Ngu nghia loi: 5xx/408/429/mat mang/200 sai body -> pending;
 //! 4xx con lai, envelope code!=0, failed -> fatal, ket thuc ngay va bao loi.
 
 use serde::{Deserialize, Serialize};
@@ -100,7 +99,7 @@ fn envelope_error(payload: &Value) -> Option<String> {
     Some(format!("ZCode dang nhap that bai ({code}): {message}"))
 }
 
-/// Giong Agent2API `apply_interstitial`: semantics "set" (thay doi cung ten),
+/// apply_interstitial: semantics "set" (thay doi cung ten),
 /// encode toan bo (inner `zcode%3A%2F%2F` encode lai thanh `%253A%252F%252F`).
 /// Ban quooc te dung param `redirect_uri`, ban Trung Quoc dung `redirect`.
 fn apply_interstitial(authorize_url: &str) -> String {
