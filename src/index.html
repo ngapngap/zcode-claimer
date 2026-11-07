@@ -8,72 +8,192 @@
 </head>
 <body>
   <div class="app">
-    <div class="header">
-      <div>
-        <h1>ZCode Claimer</h1>
-        <p class="subtitle">Claim Start Plan hàng ngày → xem quota → export JSON cho router</p>
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16L8 19h12"/></svg>
+        </div>
+        <div class="brand-text">
+          <strong>ZCode Claimer</strong>
+          <span>v0.1.0 &middot; Windows</span>
+        </div>
       </div>
-      <span class="badge" title="Chỉ dùng cho ZCode">ZCode only</span>
-    </div>
 
-    <!-- Quota card: check tài khoản / số dư hiện tại -->
-    <section class="card quota-card" id="quotaCard" aria-label="Quota hôm nay">
-      <div class="quota-head">
-        <h2>Quota hôm nay</h2>
-        <button id="btnRefreshQuota" class="small" type="button">↻ Làm mới</button>
+      <nav class="steps" aria-label="Các bước claim">
+        <div class="step is-active" data-step="1">
+          <span class="step-dot"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+          <div><strong>Đăng nhập</strong><span>JWT &middot; Device ID</span></div>
+          <span class="step-state">1</span>
+        </div>
+        <div class="step" data-step="2">
+          <span class="step-dot"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div><strong>Claim gói</strong><span>Preview &middot; Captcha</span></div>
+          <span class="step-state">2</span>
+        </div>
+        <div class="step" data-step="3">
+          <span class="step-dot"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span>
+          <div><strong>Export</strong><span>JSON &middot; file export</span></div>
+          <span class="step-state">3</span>
+        </div>
+      </nav>
+
+      <div class="side-note">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+        <p>Claim mở lúc <strong>18:00</strong>, dùng được <strong>22:00 &ndash; 08:00</strong> hôm sau (giờ VN).</p>
       </div>
-      <div id="quotaSummary" class="quota-empty">Chưa có dữ liệu — nhập JWT ở mục 1 rồi bấm Làm mới</div>
-      <div id="quotaBuckets"></div>
-      <div id="quotaPlans"></div>
-      <div id="retryHint" class="retry-hint" role="status" hidden></div>
-    </section>
 
-    <div class="card">
-      <h2>1. Login ZCode</h2>
-      <button id="btnLogin" class="primary" type="button">Đăng nhập ZCode (mở web)</button>
-      <p class="hint">Bấm nút, browser mặc định mở trang đăng nhập ZCode, nhập user/pass, xác thực xong quay lại app — các trường dưới sẽ tự điền:</p>
-      <div id="loginStatus" class="result" aria-live="polite"></div>
-      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken (tự điền sau login, hoặc dán tay)" autocomplete="off" /></label>
-      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định theo account)</span>
-        <input id="deviceMid" type="text" placeholder="UUID" autocomplete="off" />
-        <button id="genMid" class="small" type="button">Tạo mới</button>
-      </label>
-      <label>User ID <input id="userId" type="text" placeholder="userId" /></label>
-      <label>Username <input id="username" type="text" placeholder="username" /></label>
-      <label>Email <input id="email" type="text" placeholder="email" /></label>
-      <label>ZAI Business Token <input id="bizToken" type="text" placeholder="zaiBusinessToken" /></label>
-      <button id="btnPreview" class="primary" type="button">Báo activation + Preview gói</button>
-      <div id="previewResult" class="result"></div>
-    </div>
+      <div class="card update-card" id="updateCard">
+        <div class="update-head">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+          <h2>Cập nhật ứng dụng</h2>
+        </div>
+        <p id="updateStatus" class="hint">Đang kiểm tra bản mới...</p>
+        <div class="update-actions">
+          <button id="btnCheckUpdate" class="ghost small" type="button">Kiểm tra cập nhật</button>
+          <button id="btnInstallUpdate" class="primary small" type="button" hidden>Tải &amp; cài đặt</button>
+        </div>
+        <progress id="updateProgress" max="100" value="0" hidden></progress>
+      </div>
+    </aside>
 
-    <div class="card" id="step-claim" style="display:none">
-      <h2>2. Claim gói</h2>
-      <div id="plansList"></div>
-      <button id="btnCaptcha" class="primary" type="button">Làm captcha (slider)</button>
-      <button id="btnClaim" class="primary" type="button" disabled>Lãnh gói</button>
-      <div id="claimResult" class="result"></div>
-    </div>
+    <!-- ============ Main ============ -->
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Claim Start Plan hôm nay</h1>
+          <p class="subtitle">Đăng nhập ZCode &rarr; xem quota &rarr; lãnh gói &rarr; export JSON</p>
+        </div>
+        <span class="badge">
+          <span class="badge-dot"></span>ZCode only
+        </span>
+      </header>
 
-    <div class="card" id="step-export" style="display:none">
-      <h2>3. Export router</h2>
-      <button id="btnExport" class="primary" type="button">Tạo file export.json</button>
-      <pre id="exportJson" class="code"></pre>
-      <button id="btnDownload" class="small" type="button">Tải về</button>
-      <p class="hint">Import: <code>POST /api/providers</code> với body là JSON trên (router trên máy chủ).</p>
-    </div>
+      <!-- Quota -->
+      <section class="card quota-card" id="quotaCard" aria-label="Quota hôm nay">
+        <div class="quota-head">
+          <div>
+            <h2>Quota hôm nay</h2>
+            <p class="hint">Số dư và các gói đang hiệu lực của tài khoản</p>
+          </div>
+          <button id="btnRefreshQuota" class="ghost small" type="button">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+            Làm mới
+          </button>
+        </div>
+        <div id="quotaSummary" class="quota-empty">Chưa có dữ liệu — nhập JWT ở mục 1 rồi bấm Làm mới</div>
+        <div id="quotaBuckets"></div>
+        <div id="quotaPlans"></div>
+        <div id="retryHint" class="retry-hint" role="status" hidden></div>
+      </section>
+
+      <!-- 1. Login -->
+      <section class="card">
+        <div class="card-head">
+          <span class="num">1</span>
+          <div>
+            <h2>Đăng nhập ZCode</h2>
+            <p class="hint">Mở browser mặc định, nhập user/pass trên web ZCode — các trường dưới sẽ tự điền.</p>
+          </div>
+        </div>
+        <button id="btnLogin" class="primary" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+          Đăng nhập ZCode (mở web)
+        </button>
+        <div id="loginStatus" class="result" aria-live="polite"></div>
+
+        <div class="field">
+          <label for="jwt">JWT <span class="req">zcodeJwtToken</span></label>
+          <div class="input-wrap">
+            <input id="jwt" type="password" placeholder="Tự điền sau khi đăng nhập, hoặc dán tay" autocomplete="off" />
+            <button class="icon-btn" type="button" data-toggle="jwt" title="Hiện / ẩn JWT" aria-label="Hiện hoặc ẩn JWT">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button class="icon-btn" type="button" data-copy="jwt" title="Sao chép JWT" aria-label="Sao chép JWT">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="deviceMid">X-Device-Mid</label>
+            <div class="input-wrap">
+              <input id="deviceMid" type="text" placeholder="UUID — phải ổn định theo account" autocomplete="off" />
+              <button id="genMid" class="ghost small" type="button">Tạo mới</button>
+            </div>
+            <p class="field-hint">Để trống sẽ tự sinh UUID. Đừng đổi lung tung — đổi Mid có thể bị lỗi 3001.</p>
+          </div>
+          <div class="field">
+            <label for="userId">User ID</label>
+            <input id="userId" type="text" placeholder="userId" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" type="text" placeholder="username" />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="text" placeholder="email" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="bizToken">ZAI Business Token</label>
+          <input id="bizToken" type="password" placeholder="zaiBusinessToken" />
+        </div>
+
+        <button id="btnPreview" class="primary block" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          Báo activation + Preview gói
+        </button>
+        <div id="previewResult" class="result"></div>
+      </section>
+
+      <!-- 2. Claim -->
+      <section class="card" id="step-claim" style="display:none">
+        <div class="card-head">
+          <span class="num">2</span>
+          <div>
+            <h2>Claim gói</h2>
+            <p class="hint">Chọn gói hôm nay, làm captcha slider rồi bấm Lãnh gói.</p>
+          </div>
+        </div>
+        <div id="plansList"></div>
+        <div class="btn-row">
+          <button id="btnCaptcha" class="secondary" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Làm captcha (slider)
+          </button>
+          <button id="btnClaim" class="primary" type="button" disabled>Lãnh gói</button>
+        </div>
+        <div id="claimResult" class="result"></div>
+      </section>
+
+      <!-- 3. Export -->
+      <section class="card" id="step-export" style="display:none">
+        <div class="card-head">
+          <span class="num">3</span>
+          <div>
+            <h2>Export</h2>
+            <p class="hint">File JSON dưới đây chứa JWT và token ZCode, tải về để dùng tiếp.</p>
+          </div>
+        </div>
+        <button id="btnExport" class="primary" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Tạo file export.json
+        </button>
+        <pre id="exportJson" class="code"></pre>
+        <button id="btnDownload" class="ghost small" type="button">Tải về</button>
+      </section>
+    </main>
   </div>
 
   <div id="captcha-container" style="position:fixed;left:-9999px;top:0;width:360px;height:40px;"></div>
   <div id="captcha-button" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;"></div>
-
-  <!-- Cap nhat tu dong: check khi mo app + nut check tay -->
-  <div class="card" id="updateCard">
-    <h2>Cập nhật ứng dụng</h2>
-    <p id="updateStatus" class="hint">Đang kiểm tra bản mới...</p>
-    <button id="btnCheckUpdate" class="small" type="button">Kiểm tra cập nhật</button>
-    <button id="btnInstallUpdate" class="primary" type="button" hidden>Tải &amp; cài đặt cập nhật</button>
-    <progress id="updateProgress" max="100" value="0" hidden></progress>
-  </div>
 
   <!-- ui/aliyun-captcha.js load 1 lan duy nhat (window.wbAliyunCaptcha); main.js dung solve() -->
   <script src="/ui/aliyun-captcha.js"></script>

@@ -11,7 +11,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 // 1) nhap provider (JWT/deviceMid/userId/username/email/zaiBusinessToken)
 // 2) claim (preview → captcha slider → claim plan) qua ui/aliyun-captcha.js solve()
 // 3) check tài khoản (query_balance / refreshQuota — quota, plans, balances)
-// 4) xuất định dạng router (export_router_json)
+// 4) xuất JSON (export_router_json — tên command Rust giữ nguyên)
 
 const $ = (id) => document.getElementById(id);
 let selectedPlanId = null;
@@ -19,6 +19,48 @@ let captchaVerifyParam = "";
 let captchaRegion = "";
 let jitterTimer = null;
 let loginTimer = null;
+
+// ── UI mới: ripple, hiện/ẩn JWT, sao chép JWT, stepper sidebar ──
+// (các nút này chỉ có trong UI mới; handler sống ở đây để sau khi merge vẫn chạy)
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn || btn.disabled) return;
+  const rect = btn.getBoundingClientRect();
+  const s = document.createElement("span");
+  s.className = "ripple";
+  const d = Math.max(rect.width, rect.height) * 2;
+  s.style.width = s.style.height = d + "px";
+  s.style.left = (e.clientX - rect.left - d / 2) + "px";
+  s.style.top = (e.clientY - rect.top - d / 2) + "px";
+  btn.appendChild(s);
+  setTimeout(() => s.remove(), 600);
+});
+document.querySelectorAll("[data-toggle]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const input = $(b.dataset.toggle);
+    if (!input) return;
+    input.type = input.type === "password" ? "text" : "password";
+    b.classList.toggle("is-showing", input.type === "text");
+  });
+});
+document.querySelectorAll("[data-copy]").forEach((b) => {
+  b.addEventListener("click", async () => {
+    const input = $(b.dataset.copy);
+    if (!input || !input.value) return;
+    try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand("copy"); }
+    const old = b.title;
+    b.title = "Đã sao chép";
+    setTimeout(() => { b.title = old; }, 1500);
+  });
+});
+function setStep(n) {
+  document.querySelectorAll(".step").forEach((s) => {
+    const num = Number(s.dataset.step);
+    s.classList.toggle("is-active", num === n);
+    const state = s.querySelector(".step-state");
+    if (state) state.textContent = num < n ? "✓" : String(num);
+  });
+}
 
 // ── Dang nhap ZCode tu dong: init -> mo browser -> poll ──
 // Luong dung nhu Agent2API (oauth.rs + login/zcode.rs):
@@ -67,6 +109,7 @@ $("btnLogin").onclick = async () => {
         if (c.user_id) $("userId").value = c.user_id;
         await saveCfg();
         $("loginStatus").textContent = "Dang nhap thanh cong. JWT/deviceMid/userId da tu dien. Username/email khong lay duoc tu dang nhap web (ZCode OAuth chi tra user_id) — hay nhap tay neu can export.";
+        setStep(2);
         refreshQuota();
       } else {
         $("loginStatus").textContent = "Dang nhap that bai: " + JSON.stringify(res);
@@ -293,6 +336,7 @@ $("btnClaim").onclick = async () => {
     if (result?.Claimed) {
       $("claimResult").textContent = "✅ Đã lãnh: " + result.Claimed.plan_id;
       $("step-export").style.display = "block";
+      setStep(3);
       // Ghi history vào backend (Rust giữ, UI không hiện lịch sử theo phạm vi rút gọn)
       try { await invoke("record_claim_history", { planId: result.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
       refreshQuota();
