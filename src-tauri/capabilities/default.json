@@ -7,6 +7,8 @@
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://zcode.z.ai/*" }]
-    }
+    },
+    "updater:default",
+    "process:default"
   ]
 }

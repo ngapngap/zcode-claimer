@@ -66,6 +66,15 @@
   <div id="captcha-container" style="position:fixed;left:-9999px;top:0;width:360px;height:40px;"></div>
   <div id="captcha-button" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;"></div>
 
+  <!-- Cap nhat tu dong: check khi mo app + nut check tay -->
+  <div class="card" id="updateCard">
+    <h2>Cập nhật ứng dụng</h2>
+    <p id="updateStatus" class="hint">Đang kiểm tra bản mới...</p>
+    <button id="btnCheckUpdate" class="small" type="button">Kiểm tra cập nhật</button>
+    <button id="btnInstallUpdate" class="primary" type="button" hidden>Tải &amp; cài đặt cập nhật</button>
+    <progress id="updateProgress" max="100" value="0" hidden></progress>
+  </div>
+
   <!-- ui/aliyun-captcha.js load 1 lan duy nhat (window.wbAliyunCaptcha); main.js dung solve() -->
   <script src="/ui/aliyun-captcha.js"></script>
   <script type="module" src="/main.js"></script>

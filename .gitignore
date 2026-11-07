@@ -5,3 +5,4 @@ export/*.json
 !export/README.md
 .DS_Store
 .pnpm-store/
+releasing/updater.key

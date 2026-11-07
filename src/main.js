@@ -318,7 +318,55 @@ $("btnExport").onclick = async () => {
   };
 };
 
+// ── Cap nhat tu dong (Tauri updater): check khi mo app (silent) + nut check tay ──
+// Manifَسست (updates/latest.json) lay tu repo raw; updater plugin tu tai .sig/.msi/.exe,
+// kiem tra chu ky bang pubkey nhung trong tauri.conf.json, cai dat xong relaunch.
+// Luong chinh thuc: check() -> update/downloadAndInstall() -> relaunch() (process plugin).
+let pendingUpdate = null;
+async function checkForUpdates(manual) {
+  if (!isTauri()) return;
+  const st = $("updateStatus");
+  if (manual) st.textContent = "Dang kiem tra...";
+  try {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    pendingUpdate = update || null;
+    $("btnInstallUpdate").hidden = !update;
+    if (update) {
+      st.textContent = `Co ban moi v${update.version} — bam "Tai & cai dat" de cap nhat.`;
+      if (update.body) st.textContent += `\n${update.body}`;
+    } else {
+      st.textContent = manual ? "Ban hien tai da moi nhat." : "Ban hien tai da moi nhat.";
+    }
+  } catch (e) {
+    if (manual) st.textContent = "Loi kiem tra: " + e;
+  }
+}
+$("btnCheckUpdate").onclick = () => checkForUpdates(true);
+$("btnInstallUpdate").onclick = async () => {
+  if (!pendingUpdate) return;
+  const st = $("updateStatus"), prog = $("updateProgress");
+  $("btnInstallUpdate").disabled = true;
+  prog.hidden = false;
+  st.textContent = "Dang tai ban cap nhat...";
+  try {
+    let total = 0, downloaded = 0;
+    await pendingUpdate.downloadAndInstall(async (event) => {
+      if (event.event === "Started") { total = event.contentLength || 0; }
+      if (event.event === "Progress") { downloaded += event.chunkLength; prog.value = total ? Math.round(100 * downloaded / total) : 0; }
+    });
+    st.textContent = "Cai dat xong, dang khoi dong lai...";
+    const { relaunch } = await import("@tauri-apps/plugin-process");
+    await relaunch();
+  } catch (e) {
+    st.textContent = "Loi cai dat cap nhat: " + e;
+    $("btnInstallUpdate").disabled = false;
+  }
+};
+
 // Khởi tạo: nạp config đã lưu từ Rust persistence khi mở app
 isTauri().then(() => {
   if ($("jwt").value.trim()) refreshQuota();
+  // Auto-check update khi mo app (silent, khong popup dialog — dialog:false trong tauri.conf.json)
+  checkForUpdates(false);
 });

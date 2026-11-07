@@ -50,6 +50,56 @@ jobs:
       - name: Build Tauri app (Windows x64)
         working-directory: src-tauri
         run: pnpm exec tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Khi push tag v* (release) — updater sinh .sig tu createUpdaterArtifacts: true
+      # Can publish dang tam metadata len GitHub Release. App check tai
+      # https://raw.githubusercontent.com/ngapngap/zcode-claimer/main/updates/latest.json
+      - name: Publish update manifest (latest.json) tren Release + branch updates/
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.TAURI_SIGNING_PRIVATE_KEY != ''
+        shell: pwsh
+        env:
+          UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $bundle = "src-tauri\target\release\bundle"
+          $sigFile = Get-ChildItem $bundle -Recurse -File -Include *.msi.sig, *.app.tar.gz.sig | Select-Object -First 1
+          $pkgFile = Get-ChildItem $bundle -Recurse -File -Include *.msi, *.app.tar.gz | Where-Object { $_.Name -notlike '*.sig' } | Select-Object -First 1
+          if (-not $sigFile) { Write-Error "Khong tim thay .sig updater"; exit 1 }
+          $sig = Get-Content $sigFile.FullName -Raw
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = (Get-Content src-tauri\tauri.conf.json | ConvertFrom-Json).version }
+          $url = "https://github.com/${env:GITHUB_REPOSITORY}/releases/download/${env:GITHUB_REF_NAME}/$($pkgFile.Name)"
+          $pubkey = $env:UPDATER_PUBLIC_KEY
+          # Dam bao pubkey lay tu secret, fallback lay tu tauri.conf.json neu secret rong
+          if ([string]::IsNullOrWhiteSpace($pubkey)) {
+            $pubkey = (Get-Content src-tauri\tauri.conf.json | ConvertFrom-Json).plugins.updater.pubkey
+          }
+          $manifest = @{
+            version = $version
+            notes = "Ban cap nhat tu dong qua updater."
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              'windows-x86_64' = @{
+                signature = $sig.Trim()
+                url = $url
+              }
+            }
+          } | ConvertTo-Json -Depth 6 -Compress
+          Set-Content -Path latest.json -Value $manifest -Encoding UTF8
+          gh release upload $env:GITHUB_REF_NAME latest.json --repo $env:GITHUB_REPOSITORY --clobber
+          # Dong bo len branch updates/ neu co remote credentials
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin updates 2>$null || git checkout --orphan updates
+          git checkout updates 2>$null || git checkout -b updates
+          New-Item -ItemType Directory -Force -Path updates | Out-Null
+          Copy-Item latest.json updates/latest.json -Force
+          git add updates/latest.json
+          git commit -m "chore(updater): latest.json $version" 2>$null || Write-Host "No changes"
+          git push origin updates --force 2>$null || Write-Host "Push updates/ optional"
 
       - name: Collect installer files
         shell: pwsh
