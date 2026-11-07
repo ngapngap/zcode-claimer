@@ -16,7 +16,7 @@
         </div>
         <div class="brand-text">
           <strong>ZCode Claimer</strong>
-          <span>v0.1.0 &middot; Windows</span>
+          <span>v0.1.2 &middot; Windows</span>
         </div>
       </div>
 
@@ -56,29 +56,7 @@
         <progress id="updateProgress" max="100" value="0" hidden></progress>
       </div>
     </aside>
-    <!-- Danh sách tài khoản đã login (multi-account) -->
-    <div class="card">
-      <h2>Tài khoản đã lưu</h2>
-      <div id="accountsList" class="hint">Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.</div>
-    </div>
-
-    <div class="card">
-      <h2>1. Login ZCode</h2>
-      <button id="btnLogin" class="primary" type="button">Đăng nhập ZCode (mở web)</button>
-      <p class="hint">Bấm nút, browser mặc định mở trang đăng nhập ZCode, nhập user/pass, xác thực xong quay lại app — các trường dưới sẽ tự điền:</p>
-      <div id="loginStatus" class="result" aria-live="polite"></div>
-      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken (tự điền sau login, hoặc dán tay)" autocomplete="off" /></label>
-      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định theo account)</span>
-        <input id="deviceMid" type="text" placeholder="UUID" autocomplete="off" />
-        <button id="genMid" class="small" type="button">Tạo mới</button>
-      </label>
-      <label>User ID <input id="userId" type="text" placeholder="userId" /></label>
-      <label>Username <input id="username" type="text" placeholder="username" /></label>
-      <label>Email <input id="email" type="text" placeholder="email" /></label>
-      <label>ZAI Business Token <input id="bizToken" type="text" placeholder="zaiBusinessToken" /></label>
-      <button id="btnPreview" class="primary" type="button">Báo activation + Preview gói</button>
-      <div id="previewResult" class="result"></div>
-    </div>
+    <!-- (da xoa card login trung lap; form login nam trong main step 1) -->
 
     <!-- ============ Main ============ -->
     <main class="main">
@@ -92,7 +70,21 @@
         </span>
       </header>
 
-      <!-- Quota -->
+      <!-- Bảng tài khoản per-account -->
+      <section class="card" id="accountsCard" aria-label="Danh sách tài khoản">
+        <div class="quota-head">
+          <div>
+            <h2>Tài khoản của bạn</h2>
+            <p class="hint">Mỗi tài khoản 1 dòng — xem số dư, lãnh gói riêng (giống bảng accounts bên Agent2API, nhưng tiếng Việt).</p>
+          </div>
+          <button id="btnRefreshAll" class="ghost small" type="button">Làm mới tất cả</button>
+        </div>
+        <div id="accountsList">
+          <p class="hint">Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.</p>
+        </div>
+      </section>
+
+      <!-- Quota của tài khoản đang chọn -->
       <section class="card quota-card" id="quotaCard" aria-label="Quota hôm nay">
         <div class="quota-head">
           <div>
@@ -218,6 +210,18 @@
   <div id="captcha-container" style="position:fixed;left:-9999px;top:0;width:360px;height:40px;"></div>
   <div id="captcha-button" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;"></div>
 
+  <!-- Dialog Lãnh gói per-account (snapshot accountsCache; confirm dùng lại jwt/deviceMid của account đó) -->
+  <div id="plansDialog" class="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="plansDialogTitle" hidden>
+    <div class="dialog">
+      <div class="dialog-head">
+        <h3 id="plansDialogTitle">Lãnh gói</h3>
+        <button id="btnClosePlans" class="ghost small" type="button">Đóng</button>
+      </div>
+      <p id="plansDialogAccount" class="hint"></p>
+      <div id="plansDialogBody"><p class="hint">Đang tải các gói...</p></div>
+      <div id="plansDialogResult" class="result" aria-live="polite"></div>
+    </div>
+  </div>
   <!-- ui/aliyun-captcha.js load 1 lan duy nhat (window.wbAliyunCaptcha); main.js dung solve() -->
   <script src="/ui/aliyun-captcha.js"></script>
   <script type="module" src="/main.js"></script>

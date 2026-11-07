@@ -170,32 +170,217 @@ function writeCfg(cfg) {
   $("email").value = cfg.email || "";
   $("bizToken").value = cfg.zai_business_token || "";
 }
-// ── Multi-account ──
+// ── Multi-account: bang per-account (UsageCell / ActionsCell giong Agent2API) ──
 let currentUserId = "";
+let accountsCache = [];
+const usageCache = new Map(); // user_id -> BalanceResult
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function usageSummary(r) {
+  if (!r) return { cls: "muted", text: "Chưa có dữ liệu" };
+  const total = Number(r.total_remaining) || 0;
+  const used = Number(r.total_used) || 0;
+  const granted = Number(r.total_granted) || total + used;
+  const pct = granted > 0 ? Math.min(100, Math.round(used / granted * 100)) : 0;
+  if (pct > 90) return { cls: "warn", text: `Gần hết: còn ${fmtUnits(total)} / ${fmtUnits(granted)}`, pct };
+  return { cls: "ok", text: `Còn ${fmtUnits(total)} / ${fmtUnits(granted)}`, pct };
+}
+
+function usageCell(a) {
+  const r = usageCache.get(a.user_id);
+  if (!r) return '<span class="usage-cell muted">Chưa có dữ liệu</span>';
+  const s = usageSummary(r);
+  const pct = s.pct ?? 0;
+  const bal = r.balances?.[0];
+  const name = bal ? (bal.show_name || bal.meter || bal.bucket_id || "") : "";
+  const pending = (r.plans || []).filter((p) => p.status === "pending").length;
+  const barCls = pct > 90 ? "low" : "";
+  const bar = `<span class="bar" style="display:inline-block;width:120px;vertical-align:middle"><span class="bar-fill ${barCls}" style="width:${pct}%"></span></span>`;
+  const pendingBadge = pending ? ` <span class="tag pending">${pending} gói chờ hiệu lực</span>` : "";
+  return `<span class="usage-cell ${s.cls}" title="${esc(s.text)}">${name ? esc(name) + " — " : ""}${bar} <span class="meta">${pct}%</span>${pendingBadge}</span>`;
+}
+
+function actionsCell(a) {
+  const hasJwt = !!(a.jwt && String(a.jwt).trim());
+  const claimBtn = hasJwt
+    ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể lãnh của tài khoản này">Lãnh gói</button>`
+    : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Lãnh gói</button>`;
+  const balBtn = hasJwt
+    ? `<button class="ghost small" data-balance-acct="${esc(a.user_id)}" type="button" title="Đọc số dư của tài khoản này (kết quả hiện ở cột Số dư)">Số dư</button>`
+    : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Số dư</button>`;
+  return `<span class="actions-cell">${claimBtn} ${balBtn}</span>`;
+}
+
+function cell(key, account) {
+  if (key === "usage") return usageCell(account);
+  if (key === "actions") return actionsCell(account);
+  return "";
+}
+
+function renderAccountsTable() {
+  const el = $("accountsList");
+  if (!el) return;
+  if (!accountsCache.length) {
+    el.innerHTML = '<p class="hint">Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.</p>';
+    return;
+  }
+  const rows = accountsCache.map((a) => {
+    const active = a.user_id === currentUserId;
+    return `<tr class="account-row ${active ? "is-active" : ""}" data-userid="${esc(a.user_id)}">
+      <td><b>${esc(a.username || a.user_id || "?")}</b>${active ? ' <span class="tag active">Đang dùng</span>' : ""}<div class="meta">${esc(a.user_id || "")}</div></td>
+      <td>${cell("usage", a)}</td>
+      <td>${cell("actions", a)}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<table class="accounts-table"><thead><tr><th>Tài khoản</th><th>Số dư</th><th>Thao tác</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.querySelectorAll("[data-claim-acct]").forEach((btn) => {
+    btn.onclick = () => openPlansForAccount(btn.dataset.claimAcct);
+  });
+  document.querySelectorAll("[data-balance-acct]").forEach((btn) => {
+    btn.onclick = () => queryUsageOnce(btn.dataset.balanceAcct);
+  });
+  document.querySelectorAll(".account-row").forEach((tr) => {
+    tr.onclick = (e) => {
+      if (e.target.closest("button")) return;
+      switchAccount(tr.dataset.userid);
+    };
+  });
+}
+
+async function queryUsageOnce(userId) {
+  const a = accountsCache.find((x) => x.user_id === userId);
+  if (!a) return;
+  const mid = (a.device_mid || "").trim() || (userId === currentUserId ? await ensureMid() : "");
+  try {
+    const r = await invoke("query_balance", { jwt: a.jwt, deviceMid: mid });
+    usageCache.set(userId, r);
+    if (userId === currentUserId) renderQuota(r);
+    renderAccountsTable();
+  } catch (e) {
+    const el = $("quotaSummary");
+    if (el && userId === currentUserId) el.innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi số dư: ${esc(String(e))}</div>`;
+  }
+}
+
+// ── Dialog Lãnh gói per-account (ActionsCell → openZcodePlans→ wbZcodeClaim) ──
+async function openPlansForAccount(userId) {
+  const a = accountsCache.find((x) => x.user_id === userId);
+  if (!a) return;
+  // Tu chuyen account dang dung truoc khi mo dialog (writeCfg + save) de khong vo vong
+  writeCfg(a);
+  currentUserId = userId;
+  await saveCfg();
+  renderAccountsTable();
+  await refreshQuota();
+  // Sau day dialog lay jwt/mid tu snapshot a (khong doc phan tu form da doi)
+  openPlansDialog(a);
+}
+
+function openPlansDialog(a) {
+  const dlg = $("plansDialog");
+  if (!dlg) { runPreview(a); return; }
+  dlg.hidden = false;
+  $("plansDialogAccount").textContent = `Tài khoản: ${a.username || a.user_id} (${a.user_id})`;
+  $("plansDialogBody").innerHTML = '<p class="hint">Đang tải các gói...</p>';
+  $("plansDialogResult").textContent = "";
+  $("btnClosePlans").onclick = () => { dlg.hidden = true; };
+  dlg.onclick = (e) => { if (e.target === dlg) dlg.hidden = true; };
+  // preview khong captcha nen goi thang
+  (async () => {
+    const mid = (a.device_mid || "").trim() || await ensureMid();
+    try {
+      const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid });
+      if (result?.NotDeployed) { $("plansDialogBody").innerHTML = '<p class="hint">Hoạt động chưa ra mắt (404) — chờ mở bán</p>'; return; }
+      const plans = result?.Plans || [];
+      if (!plans.length) { $("plansDialogBody").innerHTML = '<p class="hint">Không có gói nào hôm nay</p>'; return; }
+      let dialogPlanId = null;
+      $("plansDialogBody").innerHTML = plans.map((p) =>
+        `<div class="plan-item" data-dialog-id="${esc(p.plan_id)}"><span><b>${esc(p.name)}</b> — ${esc(p.plan_id)}<br><span style="font-size:12px;color:#6e6e73">${esc(p.description || "")}</span></span><span>${p.entitlements?.[0] ? fmtUnits(p.entitlements[0].grant_units) + " " + esc(p.entitlements[0].unit_type || "") : ""}</span></div>`
+      ).join("") + `<div class="btn-row"><button id="btnDialogCaptcha" class="secondary" type="button">Làm captcha (slider)</button><button id="btnDialogClaim" class="primary" type="button" disabled>Lãnh gói</button></div>`;
+      dlg.querySelectorAll(".plan-item").forEach((el) => {
+        el.onclick = () => {
+          dlg.querySelectorAll(".plan-item").forEach((x) => x.classList.remove("selected"));
+          el.classList.add("selected");
+          dialogPlanId = el.dataset.dialogId;
+          $("btnDialogCaptcha").disabled = false;
+        };
+      });
+      $("btnDialogCaptcha").onclick = async () => {
+        if (!dialogPlanId) { $("plansDialogResult").textContent = "Chưa chọn gói"; return; }
+        let config;
+        try { config = await invoke("get_captcha_config"); } catch (e) { $("plansDialogResult").textContent = "Lấy cấu hình captcha lỗi: " + e; return; }
+        if (!config || !config.enabled) { $("plansDialogResult").textContent = "Upstream nói không cần mã xác thực — bấm Lãnh luôn"; $("btnDialogClaim").disabled = false; return; }
+        $("plansDialogResult").textContent = "Kéo slider để hoàn thành captcha...";
+        try {
+          await window.wbAliyunCaptcha.solve(
+            { region: config.region, prefix: config.prefix, sceneId: config.scene_id },
+            async (verifyParam) => {
+              captchaVerifyParam = verifyParam;
+              captchaRegion = config.region;
+              $("plansDialogResult").textContent = "Captcha OK — bấm Lãnh gói";
+              $("btnDialogClaim").disabled = false;
+              return { captchaResult: true, bizResult: true };
+            }
+          );
+        } catch (e) {
+          if (e?.name === "CaptchaCancelledError") { $("plansDialogResult").textContent = "Đã hủy captcha"; return; }
+          $("plansDialogResult").textContent = "Lỗi captcha: " + (e?.message || e);
+        }
+      };
+      $("btnDialogClaim").onclick = async () => {
+        if (!dialogPlanId) { $("plansDialogResult").textContent = "Chưa chọn gói"; return; }
+        $("plansDialogResult").textContent = "Đang lãnh...";
+        try {
+          const result = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, planId: dialogPlanId, captchaVerifyParam, captchaRegion });
+          if (result?.Claimed) {
+            $("plansDialogResult").textContent = "Đã lãnh: " + result.Claimed.plan_id;
+            $("step-export").style.display = "block";
+            setStep(3);
+            try { await invoke("record_claim_history", { planId: result.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
+            queryUsageOnce(userId);
+            refreshQuota();
+          } else if (result?.Failed) {
+            $("plansDialogResult").textContent = `Lỗi: ${result.Failed.failure}: ${result.Failed.message} (code ${result.Failed.code})`;
+            showRetryHint(result.Failed.code, result.Failed.failure_ends_at);
+            try { await invoke("record_claim_history", { planId: dialogPlanId, date: new Date().toISOString().slice(0, 10), outcome: "failed", code: result.Failed.code, message: result.Failed.message || "", failureEndsAt: result.Failed.failure_ends_at ?? null }); } catch {}
+            if (result.Failed.code === 3007) $("btnDialogClaim").disabled = true;
+            queryUsageOnce(userId);
+          }
+        } catch (e) { $("plansDialogResult").textContent = "Lỗi: " + e; }
+      };
+    } catch (e) { $("plansDialogBody").innerHTML = `<p class="hint" style="color:#a50e0e">Lỗi preview: ${esc(String(e))}</p>`; }
+  })();
+}
+
+async function switchAccount(userId) {
+  const cfg = accountsCache.find((x) => x.user_id === userId);
+  if (!cfg) return;
+  writeCfg(cfg);
+  currentUserId = userId;
+  await saveCfg();
+  renderAccountsTable();
+  await refreshQuota();
+}
+
 async function loadAccounts() {
   const el = $("accountsList");
   if (!el) return;
   try {
-    const accounts = await invoke("list_accounts");
-    if (!accounts || !accounts.length) {
-      el.textContent = "Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.";
+    accountsCache = (await invoke("list_accounts")) || [];
+    if (!accountsCache.length) {
+      renderAccountsTable();
       return;
     }
-    el.innerHTML = accounts.map(a => {
-      const active = a.user_id === currentUserId ? " (đang dùng)" : "";
-      return `<div class="account-item" data-userid="${a.user_id}">
-        <b>${a.username || a.user_id || "?"}</b>
-        <span style="color:#6e6e73;font-size:12px">${a.user_id || ""}${active}</span>
-        <button class="small" data-switch="${a.user_id}" type="button">Dùng tài khoản này</button>
-      </div>`;
-    }).join("");
-    document.querySelectorAll("[data-switch]").forEach(btn => {
-      btn.onclick = async () => {
-        const uid = btn.dataset.switch;
-        const cfg = accounts.find(x => x.user_id === uid);
-        if (cfg) { writeCfg(cfg); currentUserId = uid; await saveCfg(); refreshQuota(); loadAccounts(); }
-      };
-    });
+    if (!currentUserId) currentUserId = accountsCache[0]?.user_id || "";
+    if (!accountsCache.some((a) => a.user_id === currentUserId)) currentUserId = accountsCache[0].user_id;
+    renderAccountsTable();
+    // Tu load so du cho moi tai khoan (khong sua main quota card, chi fill cot So du)
+    for (const a of accountsCache) {
+      if (a.jwt) { queryUsageOnce(a.user_id); }
+    }
   } catch (e) {
     el.textContent = "Không tải được danh sách tài khoản: " + e;
   }
@@ -257,12 +442,18 @@ async function refreshQuota() {
   $("quotaSummary").textContent = "Đang tải quota...";
   try {
     const mid = await ensureMid();
-    renderQuota(await invoke("query_balance", { jwt, deviceMid: mid }));
+    const r = await invoke("query_balance", { jwt, deviceMid: mid });
+    renderQuota(r);
+    if (currentUserId) usageCache.set(currentUserId, r);
+    renderAccountsTable();
   } catch (e) {
     $("quotaSummary").innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi quota: ${e}</div>`;
   }
 }
 $("btnRefreshQuota").onclick = refreshQuota;
+$("btnRefreshAll")?.addEventListener("click", async () => {
+  for (const a of accountsCache) { if (a.jwt) await queryUsageOnce(a.user_id); }
+});
 
 // Demo dữ liệu mẫu cho quota card (chỉ khi mở với ?demo=1, không cần JWT thật).
 if (new URLSearchParams(location.search).has("demo")) {
@@ -281,10 +472,10 @@ if (new URLSearchParams(location.search).has("demo")) {
   showRetryHint(1005, now + 3600);
 }
 
-$("btnPreview").onclick = async () => {
-  const jwt = $("jwt").value.trim();
+async function runPreview(account) {
+  const jwt = (account?.jwt || $("jwt").value).trim();
+  const mid = (account?.device_mid || $("deviceMid").value || "").trim() || await ensureMid();
   await saveCfg();
-  const mid = await ensureMid();
   $("previewResult").textContent = "Đang báo activation + preview...";
   try {
     await invoke("report_activation", { jwt, deviceMid: mid });
@@ -306,7 +497,8 @@ $("btnPreview").onclick = async () => {
     });
     $("previewResult").textContent = `Tìm thấy ${plans.length} gói`;
   } catch (e) { $("previewResult").textContent = "Lỗi: " + e; }
-};
+}
+$("btnPreview").onclick = async () => { await runPreview(); };
 
 // ── Captcha: dùng ui/aliyun-captcha.js solve(config, request) ──
 // request(verifyParam) lưu chuoi xac thuc + region, trả về {captchaResult, bizResult}
@@ -367,17 +559,19 @@ $("btnClaim").onclick = async () => {
       planId: selectedPlanId, captchaVerifyParam, captchaRegion,
     });
     if (result?.Claimed) {
-      $("claimResult").textContent = "✅ Đã lãnh: " + result.Claimed.plan_id;
+      $("claimResult").textContent = "Đã lãnh: " + result.Claimed.plan_id;
       $("step-export").style.display = "block";
       setStep(3);
       // Ghi history vào backend (Rust giữ, UI không hiện lịch sử theo phạm vi rút gọn)
       try { await invoke("record_claim_history", { planId: result.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
       refreshQuota();
+      if (currentUserId) queryUsageOnce(currentUserId);
     } else if (result?.Failed) {
-      $("claimResult").textContent = `❌ ${result.Failed.failure}: ${result.Failed.message} (code ${result.Failed.code})`;
+      $("claimResult").textContent = `Lỗi: ${result.Failed.failure}: ${result.Failed.message} (code ${result.Failed.code})`;
       showRetryHint(result.Failed.code, result.Failed.failure_ends_at);
       try { await invoke("record_claim_history", { planId: selectedPlanId, date: new Date().toISOString().slice(0, 10), outcome: "failed", code: result.Failed.code, message: result.Failed.message || "", failureEndsAt: result.Failed.failure_ends_at ?? null }); } catch {}
       if (result.Failed.code === 3007) $("btnClaim").disabled = true;
+      if (currentUserId) queryUsageOnce(currentUserId);
     }
   } catch (e) { $("claimResult").textContent = "Lỗi: " + e; }
 };
@@ -396,7 +590,7 @@ $("btnExport").onclick = async () => {
 };
 
 // ── Cap nhat tu dong (Tauri updater): check khi mo app (silent) + nut check tay ──
-// Manifَسست (updates/latest.json) lay tu repo raw; updater plugin tu tai .sig/.msi/.exe,
+// Manifest (updates/latest.json) lay tu repo raw; updater plugin tu tai .sig/.msi/.exe,
 // kiem tra chu ky bang pubkey nhung trong tauri.conf.json, cai dat xong relaunch.
 // Luong chinh thuc: check() -> update/downloadAndInstall() -> relaunch() (process plugin).
 let pendingUpdate = null;
