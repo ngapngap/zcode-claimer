@@ -49,7 +49,7 @@
 
 ## Chuẩn bị phiên mới
 
-- Vào thư mục: `/home/ubuntu/zcode-claimer/`
+- Vào thư mục: `~/zcode-claimer/`
 - Đọc theo thứ tự: `README.md` → `docs/architecture.md` → `docs/protocol.md` → `docs/integration.md` → `docs/security.md` → `TODO.md` (file này)
-- Tham khảo (chỉ đọc, không sửa): `/home/ubuntu/router/oss/`
+- Tham khảo (chỉ đọc, không sửa): `~/router/oss/`
 - Giờ claim: 18:00 VN = 19:00 Bắc Kinh (mở bán); window dùng 22:00–08:00 VN

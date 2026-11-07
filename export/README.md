@@ -24,6 +24,6 @@ File JSON sau claim sẽ nằm ở đây. Format đúng schema `provider_conns` 
 }
 ```
 
-Import: `POST /api/providers` với body là JSON này (hoặc ghi trực tiếp vào `/home/ubuntu/.router/db/data.sqlite` bảng `provider_conns`).
+Import: `POST /api/providers` với body là JSON này (hoặc ghi trực tiếp vào `~/.router/db/data.sqlite` bảng `provider_conns`).
 
 `.gitkeep` giữ thư mục.

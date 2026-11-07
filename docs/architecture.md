@@ -23,10 +23,10 @@ User (Windows)
 
 ## Traceless pool (background inference)
 
-File `ui/zcode-captcha-pool.js` (copy nguyên từ bản gốc) — vòng đời pool:
+File `ui/zcode-captcha-pool.js` (pool captcha bên router, file này không nằm trong repo này) — vòng đời pool:
 
 - Poll `GET /api/zcode/captcha` mỗi 2.5s (`maxPerRound=1`, backoff 3–15s)
-- Target 3 token, đẩy qua `window.workbuddyDesktop.pushZcodeCaptchaTokens` → Rust `push()`
+- Target 3 token, đẩy qua bridge JS → Rust `push()`
 - Token TTL ~95s, one-instance-one-mint, validate: length ≥200, atob JSON, `securityToken` ≥50
 - Nếu router không dùng pool này (đã có executor próprio), có thể tắt
 

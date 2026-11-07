@@ -1,6 +1,6 @@
 # router integration (import format)
 
-router là Next.js dashboard + gateway, DB SQLite tại `/home/ubuntu/.router/db/data.sqlite`, bảng `provider_conns`.
+router là Next.js dashboard + gateway, DB SQLite tại `~/.router/db/data.sqlite`, bảng `provider_conns`.
 
 ## router đã hỗ trợ ZCode sẵn
 

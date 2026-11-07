@@ -55,4 +55,6 @@ pnpm tauri build      # tạo .msi / .exe
   provider_conns: provider=glm, authType=oauth, zcodeJwtToken)
 - Grep CJK toàn project (src/, src-tauri/, ui/, docs/, scripts/,
   README, TODO) = 0 dòng
-- Không có secret thật nào trong code/docs (chỉ placeholder)
+- Không còn secret/domain thật nào trong code/docs (chỉ placeholder) — đã rà lại
+  2026-11-07: dọn domain router, UUID demo, password mặc định khỏi docs/demo
+  (lịch sử git cũ vẫn còn các giá trị đó, cần rewrite + force-push mới sạch hẳn)

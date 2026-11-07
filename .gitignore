@@ -7,5 +7,10 @@ export/*.json
 .pnpm-store/
 releasing/updater.key
 
+# Local account store (JWT + device IDs) - khong bao gio commit
+zcode-claimer-config.json
+accounts.json
+claim-history.json
+
 # updates/latest.json phai tracked de updater fetch duoc qua raw.githubusercontent
 !updates/latest.json

@@ -92,5 +92,3 @@ pnpm tauri build
 ```
 
 Yêu cầu: Node 20+, Rust stable, WebView2 (Windows 10/11 có sẵn).
-
-Chỉ tham khảo protocol ZCode, không đụng vào bản gốc.

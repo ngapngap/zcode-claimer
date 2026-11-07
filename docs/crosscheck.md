@@ -5,9 +5,9 @@ Chỉ đọc thư mục tham khảo, không sửa.
 
 - Bản tham chiếu: code ZCode gốc đã đối chiếu khi port
   (`claim.rs`, `activation.rs`, `captcha.rs`, `balance.rs`)
-- router: `/home/ubuntu/router/oss/services/zstart.js`,
-  `/home/ubuntu/router/oss/glm.js`,
-  `/home/ubuntu/router/oss/glm.js`
+- router: `~/router/oss/services/zstart.js`,
+  `~/router/oss/glm.js`,
+  `~/router/oss/glm.js`
 - Bản của dự án: `src-tauri/src/claim.rs`, `src-tauri/src/activation.rs`,
   `src-tauri/src/balance.rs`, `src-tauri/src/captcha_config.rs`, `ui/` (giữ nguyên bản gốc)
 

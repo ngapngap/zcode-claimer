@@ -621,6 +621,19 @@ async function isTauri() {
   return tauriReady;
 }
 
+// Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
+// bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.6 ghi sẵn.
+let appVersionText = "v0.1.6";
+async function showAppVersion() {
+  const el = $("appVersion");
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app");
+    appVersionText = "v" + (await getVersion());
+  } catch {}
+  if (el) el.textContent = appVersionText;
+}
+showAppVersion();
+
 // ── Cập nhật tự động (Tauri updater): check khi mở app (silent) + nút check tay ──
 // Manifest (updates/latest.json) lấy từ repo raw; updater plugin tự tải .sig/.msi/.exe,
 // kiểm tra chữ ký bằng pubkey nhúng trong tauri.conf.json, cài đặt xong relaunch.
@@ -639,7 +652,7 @@ async function checkForUpdates(manual) {
       st.textContent = `Có bản mới v${update.version} — bấm "Tải & cài đặt" để cập nhật.`;
       if (update.body) st.textContent += `\n${update.body}`;
     } else {
-      st.textContent = manual ? "Bản hiện tại đã mới nhất." : "Bản hiện tại đã mới nhất.";
+      st.textContent = `Đang dùng bản mới nhất (${appVersionText}).`;
     }
   } catch (e) {
     if (manual) st.textContent = "Lỗi kiểm tra: " + e;

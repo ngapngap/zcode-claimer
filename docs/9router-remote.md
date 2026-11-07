@@ -1,6 +1,6 @@
 # POST /api/providers qua router ở máy chủ khác (2 máy khác nhau)
 
-> Ví dụ máy chủ router: `https://router.example.com` (đã probe live ngày 2026-11-07).
+> Ví dụ máy chủ router: `https://router.example.com` (domain thật đã ẩn).
 > Kết luận ngắn: **mặc định KHÔNG mở** — phải có dashboard auth (password → JWT cookie
 > hoặc CLI token) hoặc tắt `requireLogin`. Bearer token / LLM API key của router
 > **không** thay thế được. Xem chi tiết + ví dụ curl ở dưới.
@@ -16,7 +16,7 @@
 
 Kết luận: trên máy chủ này, không có auth thì không POST được.
 
-## 2. Cơ chế auth của route (`/home/ubuntu/guard.js`)
+## 2. Cơ chế auth của route (`guard.js`)
 
 `/api/providers` nằm trong `PROTECTED_API_PATHS` và cơ chế `/api/*` là
 **deny-by-default**. Request được qua khi có **1 trong 3**:
@@ -24,7 +24,7 @@ Kết luận: trên máy chủ này, không có auth thì không POST được.
 1. **Dashboard JWT cookie** `auth_token` (khuyên dùng cho máy khác):
    - `POST /api/auth/login` với `{"password":"<dashboard-password>"}` →
      server set cookie `auth_token` (HS256, hết hạn 24h).
-   - Password mặc định là `***REMOVED***` nếu chưa đổi (`INITIAL_PASSWORD` hoặc hash trong DB),
+   - Password mặc định là mật khẩu gốc của router nếu chưa đổi (`INITIAL_PASSWORD` hoặc hash trong DB),
      nhưng trên máy remote: nếu vẫn để mặc định và không có `INITIAL_PASSWORD`,
      server **từ chối cấp token** qua remote (chống CVE factory-default) → phải đổi
      password từ localhost trước, hoặc set `INITIAL_PASSWORD`.
@@ -138,7 +138,7 @@ Nếu `requireLogin === false` trên máy chủ, bỏ bước 1 (không cần co
 ## 5. Danh sách kiểm tra trước khi chạy (2 máy khác nhau)
 
 - [ ] Máy chủ router reachable từ máy claimer (tunnel URL hoặc port + TLS).
-- [ ] `tunnelDashboardAccess === true` nếu đi qua tunnel (Settings), và password đã đổi khỏi `***REMOVED***`.
+- [ ] `tunnelDashboardAccess === true` nếu đi qua tunnel (Settings), và password đã đổi khỏi mật khẩu mặc định.
 - [ ] Có dashboard JWT cookie, hoặc `requireLogin === false`, hoặc claimer cùng máy (CLI token).
 - [ ] Body phẳng: `apiKey` + `providerSpecificData` ở top-level (không lồng trong `data`).
 - [ ] `X-Device-Mid`: ghi UUID claimer vào `~/.router/zcode-device-mid` **trên máy chủ**
@@ -148,12 +148,12 @@ Nếu `requireLogin === false` trên máy chủ, bỏ bước 1 (không cần co
 
 ## Tham khảo
 
-- Guard: `/home/ubuntu/guard.js` (`PROTECTED_API_PATHS`,
+- Guard: `guard.js` (`PROTECTED_API_PATHS`,
   `isAuthenticated`, `ALWAYS_PROTECTED`, `canAccessPublicLlmApi`)
-- Route: `/home/ubuntu/router/src/app/api/providers/route.js:84-207`
-- Session: `/home/ubuntu/router/src/lib/auth/dashboardSession.js` (JWT 24h, mặc định `***REMOVED***`)
-- CLI token: `/home/ubuntu/router/src/shared/utils/machineId.js` (`getConsistentMachineId`)
-- glm registry: `/home/ubuntu/router/oss/glm.js`
+- Route: `~/router/src/app/api/providers/route.js:84-207`
+- Session: `~/router/src/lib/auth/dashboardSession.js` (JWT 24h, password mặc định của router)
+- CLI token: `~/router/src/shared/utils/machineId.js` (`getConsistentMachineId`)
+- glm registry: `~/router/oss/glm.js`
   (dual-auth, không có `apiKeyOptionalWith`)
-- Start Plan: `/home/ubuntu/router/oss/handlers/core.js:130-154`,
-  `/home/ubuntu/router/oss/glm.js:70,253,287`
+- Start Plan: `~/router/oss/handlers/core.js:130-154`,
+  `~/router/oss/glm.js:70,253,287`
