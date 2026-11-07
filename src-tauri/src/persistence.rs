@@ -13,6 +13,11 @@ const CONFIG_FILE: &str = "zcode-claimer-config.json";
 const HISTORY_FILE: &str = "claim-history.json";
 const HISTORY_MAX: usize = 200;
 
+/// Multi-account: moi tai khoan (key=user_id) co SavedConfig rieng, khong de ghi de.
+/// File: accounts.json  { "user_id": SavedConfig, ... }
+/// Config cu single-account van doc duoc de migrate (neu chua co accounts.json).
+const ACCOUNTS_FILE: &str = "accounts.json";
+
 /// Cau hinh luu local: deviceMid + JWT + cac truong account de export router.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedConfig {
@@ -150,3 +155,81 @@ pub fn append_history(app_data: Option<PathBuf>, entry: ClaimHistoryEntry) -> Re
     write_json(&path, &v)?;
     Ok(all)
 }
+
+// ── Multi-account storage ──
+
+const HISTORY_MAX_ACCOUNTS: usize = 200;
+
+fn accounts_path(app_data: &Option<PathBuf>) -> Result<PathBuf, String> {
+    let dir = app_data.clone().unwrap_or_else(|| app_data_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    Ok(dir.join(ACCOUNTS_FILE))
+}
+
+fn load_accounts_raw(app_data: &Option<PathBuf>) -> Result<std::collections::HashMap<String, SavedConfig>, String> {
+    let path = accounts_path(app_data)?;
+    match read_json(&path)? {
+        Some(serde_json::Value::Object(map)) => {
+            let mut out = std::collections::HashMap::new();
+            for (k, v) in map {
+                if let Ok(cfg) = serde_json::from_value::<SavedConfig>(v) {
+                    out.insert(k, cfg);
+                }
+            }
+            Ok(out)
+        }
+        Some(_) => Ok(std::collections::HashMap::new()),
+        None => Ok(std::collections::HashMap::new()),
+    }
+}
+
+fn save_accounts_raw(app_data: &Option<PathBuf>, map: &std::collections::HashMap<String, SavedConfig>) -> Result<(), String> {
+    let path = accounts_path(app_data)?;
+    let v = serde_json::to_value(map).map_err(|e| e.to_string())?;
+    write_json(&path, &v)
+}
+
+/// Nap account theo user_id. Neu chua co accounts.json thi migrate config cu single neu khop.
+pub fn load_account(app_data: Option<PathBuf>, user_id: &str) -> Result<SavedConfig, String> {
+    let map = load_accounts_raw(&app_data)?;
+    if let Some(cfg) = map.get(user_id) {
+        return Ok(cfg.clone());
+    }
+    // Migrate single-account len accounts.json neu chua co (ghi 1 lan)
+    let single = load_config(app_data.clone())?;
+    if !single.user_id.is_empty() && (single.user_id == user_id || user_id.is_empty()) {
+        let mut m = map;
+        m.insert(single.user_id.clone(), single.clone());
+        let _ = save_accounts_raw(&app_data, &m);
+        if user_id.is_empty() {
+            return Ok(single);
+        }
+        if let Some(c) = m.get(user_id) {
+            return Ok(c.clone());
+        }
+    }
+    Ok(SavedConfig::default())
+}
+
+/// Ghi account theo user_id (key = user_id de tranh ghi de). Neu user_id rong thi fallback single.
+pub fn save_account(app_data: Option<PathBuf>, cfg: &SavedConfig) -> Result<(), String> {
+    let key = cfg.user_id.trim().to_string();
+    if key.is_empty() {
+        return save_config(app_data, cfg);
+    }
+    let mut map = load_accounts_raw(&app_data)?;
+    map.insert(key, cfg.clone());
+    save_accounts_raw(&app_data, &map)
+}
+
+/// Tat ca accounts da luu (cho export/list).
+pub fn list_accounts(app_data: Option<PathBuf>) -> Result<Vec<SavedConfig>, String> {
+    let map = load_accounts_raw(&app_data)?;
+    if map.is_empty() {
+        let single = load_config(app_data)?;
+        if !single.user_id.is_empty() || !single.jwt.is_empty() {
+            return Ok(vec![single]);
+        }
+    }
+    Ok(map.into_values().collect())
+}
+

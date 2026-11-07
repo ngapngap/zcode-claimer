@@ -17,21 +17,32 @@ struct LoginState {
 
 // Login flow state: key = flow_id, value = CliLogin (poll_token + device_mid do caller cung cap).
 // DeviceMid on dinh theo account lay tu persistence o request start; khong gen UUID moi moi lan login.
+const DEVICE_MID_FILE: &str = "device-mid.txt";
 
 fn app_data_of(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use tauri::Manager;
     app.path().app_data_dir().ok()
 }
 
+fn device_mid_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app_data_of(app)
+        .map(|d| d.join(DEVICE_MID_FILE))
+        .unwrap_or_else(|| std::path::PathBuf::from(".").join(DEVICE_MID_FILE))
+}
+
 fn ensure_device_mid(app: &tauri::AppHandle) -> Result<String, String> {
-    let mut cfg = persistence::load_config(app_data_of(app))?;
-    let mid = cfg.device_mid.trim().to_string();
-    if !mid.is_empty() {
-        return Ok(mid);
+    let path = device_mid_path(app);
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        let mid = text.trim().to_string();
+        if !mid.is_empty() {
+            return Ok(mid);
+        }
     }
     let mid = uuid::Uuid::new_v4().to_string();
-    cfg.device_mid = mid.clone();
-    persistence::save_config(app_data_of(app), &cfg)?;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, &mid);
     Ok(mid)
 }
 
@@ -161,8 +172,13 @@ fn load_saved_config(app: tauri::AppHandle) -> Result<persistence::SavedConfig, 
 
 #[tauri::command]
 fn save_saved_config(app: tauri::AppHandle, config: persistence::SavedConfig) -> Result<(), String> {
-    // Khong log JWT; chi ghi file trong app-data.
-    persistence::save_config(app_data_of(&app), &config)
+    // Khong log JWT; chi ghi file trong app-data. Multi-account: key=user_id.
+    persistence::save_account(app_data_of(&app), &config)
+}
+
+#[tauri::command]
+fn list_accounts(app: tauri::AppHandle) -> Result<Vec<persistence::SavedConfig>, String> {
+    persistence::list_accounts(app_data_of(&app))
 }
 
 #[tauri::command]
@@ -214,6 +230,7 @@ fn main() {
             query_balance,
             load_saved_config,
             save_saved_config,
+            list_accounts,
             list_claim_history,
             record_claim_history,
             start_zcode_login,

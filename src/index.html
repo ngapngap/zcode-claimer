@@ -56,6 +56,29 @@
         <progress id="updateProgress" max="100" value="0" hidden></progress>
       </div>
     </aside>
+    <!-- Danh sách tài khoản đã login (multi-account) -->
+    <div class="card">
+      <h2>Tài khoản đã lưu</h2>
+      <div id="accountsList" class="hint">Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.</div>
+    </div>
+
+    <div class="card">
+      <h2>1. Login ZCode</h2>
+      <button id="btnLogin" class="primary" type="button">Đăng nhập ZCode (mở web)</button>
+      <p class="hint">Bấm nút, browser mặc định mở trang đăng nhập ZCode, nhập user/pass, xác thực xong quay lại app — các trường dưới sẽ tự điền:</p>
+      <div id="loginStatus" class="result" aria-live="polite"></div>
+      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken (tự điền sau login, hoặc dán tay)" autocomplete="off" /></label>
+      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định theo account)</span>
+        <input id="deviceMid" type="text" placeholder="UUID" autocomplete="off" />
+        <button id="genMid" class="small" type="button">Tạo mới</button>
+      </label>
+      <label>User ID <input id="userId" type="text" placeholder="userId" /></label>
+      <label>Username <input id="username" type="text" placeholder="username" /></label>
+      <label>Email <input id="email" type="text" placeholder="email" /></label>
+      <label>ZAI Business Token <input id="bizToken" type="text" placeholder="zaiBusinessToken" /></label>
+      <button id="btnPreview" class="primary" type="button">Báo activation + Preview gói</button>
+      <div id="previewResult" class="result"></div>
+    </div>
 
     <!-- ============ Main ============ -->
     <main class="main">

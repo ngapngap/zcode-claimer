@@ -6,3 +6,6 @@ export/*.json
 .DS_Store
 .pnpm-store/
 releasing/updater.key
+
+# updates/latest.json phai tracked de updater fetch duoc qua raw.githubusercontent
+!updates/latest.json

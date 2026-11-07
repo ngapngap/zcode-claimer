@@ -108,6 +108,8 @@ $("btnLogin").onclick = async () => {
         if (c.device_mid) $("deviceMid").value = c.device_mid;
         if (c.user_id) $("userId").value = c.user_id;
         await saveCfg();
+        currentUserId = c.user_id || "";
+        loadAccounts();
         $("loginStatus").textContent = "Dang nhap thanh cong. JWT/deviceMid/userId da tu dien. Username/email khong lay duoc tu dang nhap web (ZCode OAuth chi tra user_id) — hay nhap tay neu can export.";
         setStep(2);
         refreshQuota();
@@ -168,6 +170,37 @@ function writeCfg(cfg) {
   $("email").value = cfg.email || "";
   $("bizToken").value = cfg.zai_business_token || "";
 }
+// ── Multi-account ──
+let currentUserId = "";
+async function loadAccounts() {
+  const el = $("accountsList");
+  if (!el) return;
+  try {
+    const accounts = await invoke("list_accounts");
+    if (!accounts || !accounts.length) {
+      el.textContent = "Chưa có tài khoản nào. Bấm Đăng nhập để thêm tài khoản đầu tiên.";
+      return;
+    }
+    el.innerHTML = accounts.map(a => {
+      const active = a.user_id === currentUserId ? " (đang dùng)" : "";
+      return `<div class="account-item" data-userid="${a.user_id}">
+        <b>${a.username || a.user_id || "?"}</b>
+        <span style="color:#6e6e73;font-size:12px">${a.user_id || ""}${active}</span>
+        <button class="small" data-switch="${a.user_id}" type="button">Dùng tài khoản này</button>
+      </div>`;
+    }).join("");
+    document.querySelectorAll("[data-switch]").forEach(btn => {
+      btn.onclick = async () => {
+        const uid = btn.dataset.switch;
+        const cfg = accounts.find(x => x.user_id === uid);
+        if (cfg) { writeCfg(cfg); currentUserId = uid; await saveCfg(); refreshQuota(); loadAccounts(); }
+      };
+    });
+  } catch (e) {
+    el.textContent = "Không tải được danh sách tài khoản: " + e;
+  }
+}
+
 let tauriReady = null;
 async function isTauri() {
   if (!tauriReady) {
@@ -410,6 +443,7 @@ $("btnInstallUpdate").onclick = async () => {
 
 // Khởi tạo: nạp config đã lưu từ Rust persistence khi mở app
 isTauri().then(() => {
+  loadAccounts();
   if ($("jwt").value.trim()) refreshQuota();
   // Auto-check update khi mo app (silent, khong popup dialog — dialog:false trong tauri.conf.json)
   checkForUpdates(false);
