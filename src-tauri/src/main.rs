@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod activation;
+mod autoclaw_balance;
+mod autoclaw_credentials;
+mod autoclaw_crypto;
 mod balance;
 mod captcha_config;
 mod claim;
@@ -128,6 +131,26 @@ async fn query_balance(jwt: String, device_mid: String) -> Result<BalanceResult,
 }
 
 #[tauri::command]
+async fn query_autoclaw_balance(
+    token: String,
+    refresh_token: Option<String>,
+    device_id: Option<String>,
+    region: Option<String>,
+) -> Result<autoclaw_balance::AutoClawBalanceResult, String> {
+    let region = match region.as_deref() {
+        Some("intl") => autoclaw_credentials::Region::Intl,
+        _ => autoclaw_credentials::Region::Cn,
+    };
+    let credentials = if token.trim().is_empty() {
+        autoclaw_credentials::local_credentials(region)
+            .or_else(|_| autoclaw_credentials::env_credentials(region).ok_or_else(|| "Khong thay dang nhap AutoClaw".to_string()))
+    } else {
+        autoclaw_credentials::credentials_from_token(region, &token, refresh_token.as_deref().unwrap_or(""), device_id.as_deref().unwrap_or(""))
+    }?;
+    autoclaw_balance::query_balance(&credentials).await
+}
+
+#[tauri::command]
 fn generate_device_mid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -241,6 +264,7 @@ fn main() {
             generate_device_mid,
             export_router_json,
             query_balance,
+            query_autoclaw_balance,
             load_saved_config,
             save_saved_config,
             list_accounts,

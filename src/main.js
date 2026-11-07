@@ -601,6 +601,33 @@ $("btnRefreshAll")?.addEventListener("click", async () => {
   for (const a of accountsCache) { if (a.jwt) await queryUsageOnce(a.user_id); }
 });
 
+// ── AutoClaw (điểm, giống ZCode nhưng đơn vị điểm) ──
+function fmtNum(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("vi-VN");
+}
+$("btnAutoclaw")?.addEventListener("click", async () => {
+  const box = $("autoclawResult");
+  box.innerHTML = '<p class="hint">Đang tải điểm AutoClaw…</p>';
+  const region = "intl";
+  try {
+    const r = await invoke("query_autoclaw_balance", { token: "", refreshToken: null, deviceId: null, region });
+    const avail = r.available ?? 0;
+    let html = `<p class="quota-big">${fmtNum(avail)} điểm</p>`;
+    if (Array.isArray(r.wallets) && r.wallets.length) {
+      html += '<table class="acc-table"><thead><tr><th>Ví điểm</th><th>Số điểm</th></tr></thead><tbody>';
+      for (const w of r.wallets) html += `<tr><td>${esc(w.show_name || w.bucket_id || "Điểm")}</td><td>${fmtNum(w.remaining_points)}</td></tr>`;
+      html += "</tbody></table>";
+    }
+    if (r.expiring && r.expiring.points != null) html += `<p class="hint">Sắp hết hạn: ${esc(r.expiring.text || fmtNum(r.expiring.points) + " điểm")}</p>`;
+    if (r.subscription && r.subscription.planName) html += `<p class="hint">Gói: ${esc(r.subscription.planName)} · ${esc(r.subscription.status || "")}</p>`;
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = `<p class="hint">Lỗi tải điểm AutoClaw: ${esc(String(e))}</p>`;
+  }
+});
+
 // ── Persistence Rust thay localStorage JWT ──
 // Ưu tiên load_saved_config → save_saved_config. Chỉ khi Tauri không sẵn sàng
 // (mở bằng trình duyệt thuần cho dev) mới fallback localStorage.
@@ -622,8 +649,8 @@ async function isTauri() {
 }
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
-// bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.6 ghi sẵn.
-let appVersionText = "v0.1.7";
+// bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
+let appVersionText = "v0.1.8";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
