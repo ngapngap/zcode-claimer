@@ -651,7 +651,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.8";
+let appVersionText = "v0.1.9";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
