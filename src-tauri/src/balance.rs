@@ -17,7 +17,7 @@
 //! Chuan bi so theo server_time cua upstream, khong theo dong ho may cuc bo.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BalanceBucket {
@@ -177,8 +177,8 @@ pub async fn query_balance(jwt: &str, device_mid: &str) -> Result<BalanceResult,
         let detail = if message.is_empty() { format!("HTTP {}", status) } else { message };
         return Err(format!("Query so du that bai: {}", detail));
     }
-    let data = payload.get("data").unwrap_or(&payload);
-    Ok(normalize(data, payload))
+    let data = payload.get("data").cloned().unwrap_or_else(|| json!({}));
+    Ok(normalize(&data, payload))
 }
 
 fn normalize(data: &Value, raw: Value) -> BalanceResult {
@@ -249,7 +249,8 @@ fn normalize(data: &Value, raw: Value) -> BalanceResult {
     let total_remaining: i64 = balances.iter().map(|b| b.remaining_units).sum();
     let total_used: i64 = balances.iter().map(|b| b.used_units).sum();
     let total_granted: i64 = balances.iter().map(|b| b.total_units).sum();
-    BalanceResult { server_time: Some(now), plans, balances, total_remaining, total_used, total_granted, has_quota: !balances.is_empty(), raw }
+    let has_quota = !balances.is_empty();
+    BalanceResult { server_time: Some(now), plans, balances, total_remaining, total_used, total_granted, has_quota, raw }
 }
 
 fn now_unix() -> i64 {
