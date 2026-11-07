@@ -25,31 +25,6 @@ use crate::claim;
 
 const DEFAULT_POLL_INTERVAL_SEC: i64 = 3;
 
-#[derive(Clone, Debug)]
-pub enum PollResult {
-    Pending,
-    Ready(ZcodeLoginCredentials),
-}
-
-/// Lich su o main.rs — CliLoginSendable phai Clone vi main.rs luu tam vao State.
-/// poll_sendable duoc tao de main.rs dung tu State (single-flight).
-pub struct CliLoginSendable {
-    pub flow_id: String,
-    pub poll_token: String,
-    pub device_mid: String,
-}
-
-pub async fn poll_sendable(login: &CliLoginSendable) -> Result<PollResult, String> {
-    let tmp = CliLogin {
-        flow_id: login.flow_id.clone(),
-        poll_token: login.poll_token.clone(),
-        poll_interval_sec: 3,
-        expires_at: None,
-        device_mid: login.device_mid.clone(),
-    };
-    poll(&tmp).await
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LoginStart {
     pub flow_id: String,
@@ -74,11 +49,29 @@ pub struct ZcodeLoginCredentials {
 }
 
 struct CliLogin {
-    flow_id: String,
-    poll_token: String,
-    poll_interval_sec: i64,
-    expires_at: Option<i64>,
-    device_mid: String,
+    pub flow_id: String,
+    pub poll_token: String,
+    pub poll_interval_sec: i64,
+    pub expires_at: Option<i64>,
+    pub device_mid: String,
+}
+
+/// Helper public de main.rs reconstruct tu State (single-flight, khong expose qua invoke).
+pub struct CliLoginSendable {
+    pub flow_id: String,
+    pub poll_token: String,
+    pub device_mid: String,
+}
+
+pub async fn poll_sendable(login: &CliLoginSendable) -> Result<PollResult, String> {
+    let tmp = CliLogin {
+        flow_id: login.flow_id.clone(),
+        poll_token: login.poll_token.clone(),
+        poll_interval_sec: 3,
+        expires_at: None,
+        device_mid: login.device_mid.clone(),
+    };
+    poll(&tmp).await
 }
 
 fn region_provider() -> &'static str {
@@ -93,7 +86,9 @@ fn random_hex_32() -> String {
     let mut bytes = [0u8; 32];
     // 取不到随机数时回落到时间戳串：poll token 只是本次流程关联标识，
     // 上游不拿它做鉴权，只用来把 init 与 poll 归到同一 flow。
-    if getrandom::getrandom(&mut bytes).is_err() {
+    // CSPRNG: dùng getrandom::fill (API cua getrandom 0.3).
+    let mut bytes = [0u8; 32];
+    if getrandom::fill(&mut bytes).is_err() {
         let fallback = format!(
             "{:x}{:x}{:x}",
             std::process::id(),
