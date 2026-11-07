@@ -165,8 +165,8 @@ fn parse_plan(raw: &Value) -> Option<ClaimablePlan> {
 
 pub async fn preview(jwt: &str, device_mid: &str) -> Result<PreviewOutcome, String> {
     let url = format!("{ZCODE_ORIGIN}{PREVIEW_PATH}?app_version={}&platform={}",
-        crate::urlencode(&app_version()),
-        crate::urlencode(platform()));
+        urlencode(&app_version()),
+        urlencode(platform()));
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|e| e.to_string())?;
