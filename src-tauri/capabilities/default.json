@@ -9,6 +9,7 @@
       "allow": [{ "url": "https://zcode.z.ai/*" }]
     },
     "updater:default",
-    "process:default"
+    "process:default",
+    "dialog:default"
   ]
 }

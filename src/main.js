@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { save } from "@tauri-apps/plugin-dialog";
 
 // ── UI claim ZCode (mỗi dòng 1 tài khoản, quota inline) ──
 // 0) Đăng nhập tự động: bấm nút (topbar) -> Rust init /oauth/cli/init -> mở trình
@@ -131,6 +132,28 @@ $("btnLogin").onclick = async () => {
   }, interval);
 };
 
+// Lưu file export: app thật thì hỏi đường dẫn qua hộp thoại native (plugin-dialog),
+// rồi ghi file bằng lệnh Rust save_text_file; trình duyệt thường/demo thì tải kiểu cũ.
+async function downloadExportFile(filename, contents) {
+  try {
+    const path = await save({
+      title: "Lưu file export JSON router",
+      defaultPath: filename,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!path) return { cancelled: true };
+    await invoke("save_text_file", { path, contents });
+    return { path };
+  } catch {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return { downloaded: true };
+  }
+}
+
 // ── Export JSON router: 1 nút, export tất cả tài khoản có JWT thành 1 file ──
 $("btnExportAll").onclick = async () => {
   const withJwt = accountsCache.filter((a) => a.jwt && String(a.jwt).trim());
@@ -154,11 +177,13 @@ $("btnExportAll").onclick = async () => {
     $("loginStatus").textContent = "Export thất bại cho tất cả tài khoản.";
     return;
   }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(items, null, 2)], { type: "application/json" }));
-  a.download = "zcode-router-export.json";
-  a.click();
-  $("loginStatus").textContent = `Đã export ${items.length}/${withJwt.length} tài khoản → zcode-router-export.json` + (skipped ? ` (${skipped} tài khoản lỗi, đã bỏ qua)` : "");
+  const res = await downloadExportFile("zcode-router-export.json", JSON.stringify(items, null, 2));
+  if (res.cancelled) {
+    $("loginStatus").textContent = "Đã hủy export.";
+    return;
+  }
+  const dest = res.path ? `→ ${res.path}` : "→ zcode-router-export.json (tải về thư mục mặc định)";
+  $("loginStatus").textContent = `Đã export ${items.length}/${withJwt.length} tài khoản ${dest}` + (skipped ? ` (${skipped} tài khoản lỗi, đã bỏ qua)` : "");
 };
 
 // ── Bảng tài khoản per-account (UsageCell / ActionsCell) ──
@@ -296,7 +321,8 @@ function actionsCell(a) {
     ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể lãnh của tài khoản này">Lãnh gói</button>`
     : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Lãnh gói</button>`;
   const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Nhập/sửa email đăng nhập của tài khoản này (để nhận biết tài khoản, dùng khi export)">Sửa email</button>`;
-  return `<span class="actions-cell">${claimBtn} ${editBtn}</span>`;
+  const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản này khỏi danh sách đã lưu (JWT sẽ mất, muốn dùng lại phải đăng nhập lại)">Xóa</button>`;
+  return `<span class="actions-cell">${claimBtn} ${editBtn} ${deleteBtn}</span>`;
 }
 
 // Tên hiển thị = email đăng nhập. ZCode OAuth chỉ trả user_id (không có email),
@@ -340,6 +366,23 @@ function startEditEmail(userId) {
     if (e.key === "Escape") renderAccountsTable();
   });
 }
+// Xóa 1 tài khoản đã lưu: hỏi chắc chắn rồi mới xóa khỏi accounts.json
+// (qua lệnh Rust delete_account). Xóa xong cập nhật bảng + summary ngay;
+// nếu xóa đúng tài khoản đang dùng thì reset cả config đang dùng.
+async function deleteAccount(userId) {
+  const a = accountsCache.find((x) => x.user_id === userId);
+  if (!a) return;
+  const label = displayName(a);
+  if (!window.confirm(`Xóa tài khoản ${label}?\nJWT và device ID đã lưu sẽ mất. Muốn dùng lại phải đăng nhập lại.`)) return;
+  try { await invoke("delete_account", { userId }); } catch {}
+  accountsCache = accountsCache.filter((x) => x.user_id !== userId);
+  usageCache.delete(userId);
+  if (userId === currentUserId) { currentUserId = ""; writeCfg({}); }
+  renderAccountsTable();
+  const st = $("loginStatus");
+  if (st) st.textContent = `Đã xóa tài khoản ${label}.`;
+}
+
 function shortMid(mid) {
   const m = String(mid || "").trim();
   if (!m) return '<span class="meta">—</span>';
@@ -351,6 +394,7 @@ function renderAccountsTable() {
   if (!el) return;
   if (!accountsCache.length) {
     el.innerHTML = '<p class="hint">Chưa có tài khoản nào. Bấm Đăng nhập ZCode để thêm tài khoản đầu tiên.</p>';
+    renderSummary();
     return;
   }
   const rows = accountsCache.map((a) => {
@@ -371,6 +415,9 @@ function renderAccountsTable() {
   });
   document.querySelectorAll("[data-edit-email]").forEach((btn) => {
     btn.onclick = () => startEditEmail(btn.dataset.editEmail);
+  });
+  document.querySelectorAll("[data-delete-acct]").forEach((btn) => {
+    btn.onclick = () => deleteAccount(btn.dataset.deleteAcct);
   });
   document.querySelectorAll(".account-row").forEach((tr) => {
     tr.onclick = (e) => {

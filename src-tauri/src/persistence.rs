@@ -221,6 +221,27 @@ pub fn save_account(app_data: Option<PathBuf>, cfg: &SavedConfig) -> Result<(), 
     save_accounts_raw(&app_data, &map)
 }
 
+/// Xoa account theo user_id khoi accounts.json. Neu khong co trong map thi
+/// xoa ca single config cu neu khop. Tra ve true neu da xoa duoc cai gi do.
+pub fn delete_account(app_data: Option<PathBuf>, user_id: &str) -> Result<bool, String> {
+    let key = user_id.trim();
+    if key.is_empty() {
+        return Ok(false);
+    }
+    let mut map = load_accounts_raw(&app_data)?;
+    if map.remove(key).is_some() {
+        save_accounts_raw(&app_data, &map)?;
+        return Ok(true);
+    }
+    // Fallback: single config cu co the dang giu account nay.
+    let single = load_config(app_data.clone())?;
+    if single.user_id == key {
+        save_config(app_data, &SavedConfig::default())?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 /// Tat ca accounts da luu (cho export/list).
 pub fn list_accounts(app_data: Option<PathBuf>) -> Result<Vec<SavedConfig>, String> {
     let map = load_accounts_raw(&app_data)?;

@@ -204,6 +204,8 @@ button.primary:hover { background: var(--accent-2); box-shadow: 0 4px 12px rgba(
 button.primary:disabled { background: #cbd5e1; box-shadow: none; cursor: not-allowed; }
 button.secondary { background: var(--accent-soft); color: var(--ink-2); border-color: #bfdbfe; }
 button.ghost { background: var(--surface); }
+button.ghost.danger { color: var(--err-text); }
+button.ghost.danger:hover { background: #fef2f2; border-color: #fecaca; }
 button.small { padding: 7px 12px; font-size: 12.5px; border-radius: 8px; }
 button.block { width: 100%; margin: 4px 0 0; padding: 12px 18px; }
 .btn-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }

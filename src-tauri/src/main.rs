@@ -182,6 +182,18 @@ fn list_accounts(app: tauri::AppHandle) -> Result<Vec<persistence::SavedConfig>,
 }
 
 #[tauri::command]
+fn delete_account(app: tauri::AppHandle, user_id: String) -> Result<bool, String> {
+    persistence::delete_account(app_data_of(&app), &user_id)
+}
+
+#[tauri::command]
+fn save_text_file(path: String, contents: String) -> Result<(), String> {
+    // Ghi file ra duong dan user chon trong hop thoai Save (khong qua plugin-fs
+    // de khoi can cau hinh scope; lenh Rust tu viet khong bi gioi han scope).
+    std::fs::write(&path, contents).map_err(|e| format!("khong ghi duoc file {}: {}", path, e))
+}
+
+#[tauri::command]
 fn list_claim_history(app: tauri::AppHandle) -> Result<Vec<persistence::ClaimHistoryEntry>, String> {
     persistence::load_history(app_data_of(&app))
 }
@@ -219,6 +231,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(LoginState::default())
         .invoke_handler(tauri::generate_handler![
             preview_plans,
@@ -231,6 +244,8 @@ fn main() {
             load_saved_config,
             save_saved_config,
             list_accounts,
+            delete_account,
+            save_text_file,
             list_claim_history,
             record_claim_history,
             start_zcode_login,
