@@ -4,3 +4,4 @@ dist/
 export/*.json
 !export/README.md
 .DS_Store
+.pnpm-store/

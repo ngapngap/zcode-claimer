@@ -1,11 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-mod claim;
-mod captcha_config;
 mod activation;
+mod balance;
+mod captcha_config;
+mod claim;
+mod persistence;
 
 #[tauri::command]
 async fn preview_plans(jwt: String, device_mid: String) -> Result<PreviewOutcome, String> {
@@ -39,6 +38,13 @@ async fn get_captcha_config() -> Result<Option<CaptchaConfig>, String> {
 #[tauri::command]
 async fn report_activation(jwt: String, device_mid: String) -> Result<(), String> {
     activation::report(&jwt, &device_mid).await.map_err(|e| e.to_string())
+}
+
+pub type BalanceResult = balance::BalanceResult;
+
+#[tauri::command]
+async fn query_balance(jwt: String, device_mid: String) -> Result<BalanceResult, String> {
+    balance::query_balance(&jwt, &device_mid).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -77,6 +83,57 @@ fn export_router_json(
     serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
+// ── Persistence commands (config + claim history trong app-data) ──
+
+fn app_data_of(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok()
+}
+
+#[tauri::command]
+fn load_saved_config(app: tauri::AppHandle) -> Result<persistence::SavedConfig, String> {
+    persistence::load_config(app_data_of(&app))
+}
+
+#[tauri::command]
+fn save_saved_config(app: tauri::AppHandle, config: persistence::SavedConfig) -> Result<(), String> {
+    // Khong log JWT; chi ghi file trong app-data.
+    persistence::save_config(app_data_of(&app), &config)
+}
+
+#[tauri::command]
+fn list_claim_history(app: tauri::AppHandle) -> Result<Vec<persistence::ClaimHistoryEntry>, String> {
+    persistence::load_history(app_data_of(&app))
+}
+
+#[tauri::command]
+fn record_claim_history(
+    app: tauri::AppHandle,
+    plan_id: String,
+    date: String,
+    outcome: String,
+    code: i64,
+    message: String,
+    failure_ends_at: Option<i64>,
+) -> Result<Vec<persistence::ClaimHistoryEntry>, String> {
+    let recorded_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    persistence::append_history(
+        app_data_of(&app),
+        persistence::ClaimHistoryEntry {
+            plan_id,
+            date,
+            outcome,
+            code,
+            message,
+            failure_ends_at,
+            recorded_at,
+        },
+    )
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -85,7 +142,12 @@ fn main() {
             get_captcha_config,
             report_activation,
             generate_device_mid,
-            export_router_json
+            export_router_json,
+            query_balance,
+            load_saved_config,
+            save_saved_config,
+            list_claim_history,
+            record_claim_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running zcode-claimer");

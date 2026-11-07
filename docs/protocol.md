@@ -44,3 +44,17 @@ Không có API "daily". Cách là mỗi ngày `plan_id` mới (`...-0928` → `.
 - Traceless path (mint cho background): `startTracelessVerification()` → base64 ~280 chars, TTL ~95s, one-instance-one-mint, pool target 3
 
 Nguồn code: `desktop-tauri/src-tauri/server/src/server/core/providers/zcode/{claim.rs,activation.rs,captcha.rs}` trong Agent2API.
+
+## Quota / balance (thêm sau)
+
+```text
+GET https://zcode.z.ai/api/v1/zcode-plan/billing/balance?app_version=3.14.0
+Headers: Authorization Bearer {jwt}, X-Device-Mid {uuid}, User-Agent ZCode/3.14.0
+Response: data { server_time, plans[], balances[] }
+  plans[]: { plan_id, name, status, starts_at, ends_at, entitlements[].effective_at }
+  balances[]: { bucket_id, show_name, meter, unit_type, total_units, used_units, reserved_units, remaining_units, available_units, period_start, period_end, expires_at }
+```
+
+UI quota hiển thị: tổng còn lại / đã dùng / tỉ lệ %, từng bucket (meter) + bar tiến độ, danh sách plan với tag (đang hiệu lực / chờ hiệu lực / đã hết hạn).
+
+router dùng cùng endpoint này (`zstart.js::fetchStartBalance`, `parseStartBalance`, `balanceActivePlan`). router `startPlan.appVersion = "3.16.3"` (registry `glm.js`).

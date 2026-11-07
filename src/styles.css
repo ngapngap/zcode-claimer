@@ -1,18 +1,187 @@
 * { box-sizing: border-box; }
-body { font-family: -apple-system, "Segoe UI", sans-serif; background: #f5f5f7; margin: 0; padding: 20px; color: #1d1d1f; }
-.app { max-width: 700px; margin: 0 auto; }
-h1 { font-size: 28px; margin: 0 0 4px; }
-.subtitle { color: #6e6e73; margin: 0 0 20px; }
-.card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-.card h2 { margin: 0 0 12px; font-size: 18px; }
+
+:root {
+  --bg: #f5f5f7;
+  --surface: #fff;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --border: #d2d2d7;
+  --border-soft: #f0f0f3;
+  --accent: #0071e3;
+  --accent-soft: #f0f7ff;
+  --ok-bg: #e6f4ea;
+  --ok-text: #137333;
+  --warn-bg: #fef7e0;
+  --warn-text: #b06000;
+  --err-bg: #fce8e6;
+  --err-text: #a50e0e;
+  --radius: 12px;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 20px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.app { max-width: 760px; margin: 0 auto; }
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.header h1 { font-size: 26px; margin: 0; }
+.badge {
+  background: #e8f0fe;
+  color: #1a73e8;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-top: 6px;
+}
+.subtitle { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+
+/* Card */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.card h2 { margin: 0 0 12px; font-size: 17px; }
 .card label { display: block; margin-bottom: 10px; font-size: 14px; }
-.card input[type="text"] { display: block; width: 100%; padding: 8px 10px; border: 1px solid #d2d2d7; border-radius: 8px; margin-top: 4px; font-size: 14px; }
-.hint { color: #6e6e73; font-size: 12px; font-weight: normal; }
-button { padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; margin-right: 8px; }
-button.primary { background: #0071e3; color: #fff; }
+.card input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.hint { color: var(--muted); font-size: 12px; font-weight: normal; }
+
+/* Buttons */
+button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 8px;
+  background: var(--bg);
+}
+button.primary { background: var(--accent); color: #fff; }
 button.primary:disabled { background: #a0a0a5; cursor: not-allowed; }
-button.small { padding: 4px 10px; font-size: 12px; background: #f5f5f7; border: 1px solid #d2d2d7; margin-left: 8px; }
-.result { margin-top: 12px; font-size: 13px; white-space: pre-wrap; }
-.plan-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e5e5ea; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
-.plan-item.selected { border-color: #0071e3; background: #f0f7ff; }
-.code { background: #f5f5f7; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+button.small { padding: 5px 12px; font-size: 12px; border: 1px solid var(--border); }
+
+.result { margin-top: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.result.error { color: var(--err-text); }
+.result.ok { color: var(--ok-text); }
+
+.plan-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e5e5ea;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.plan-item.selected { border-color: var(--accent); background: var(--accent-soft); }
+.code {
+  background: var(--bg);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+  max-height: 300px;
+}
+
+/* Quota card */
+.quota-head { display: flex; justify-content: space-between; align-items: center; }
+.quota-head h2 { margin: 0; }
+.quota-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+.quota-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.quota-total .big { font-size: 28px; font-weight: 700; color: var(--text); }
+.quota-total .label { color: var(--muted); font-size: 13px; }
+.quota-total .meta { font-size: 12px; color: var(--muted); }
+
+.bar { height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin: 8px 0 4px; }
+.bar-fill { height: 100%; background: var(--accent); transition: width .3s; }
+.bar-fill.low { background: #ff9500; }
+
+.bucket { padding: 10px 0; border-bottom: 1px dashed var(--border-soft); font-size: 13px; }
+.bucket:last-child { border-bottom: none; }
+.bucket-row { display: flex; justify-content: space-between; gap: 12px; }
+.bucket .name { font-weight: 600; }
+.bucket .meta { color: var(--muted); font-size: 12px; }
+
+.plan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.plan-row:last-child { border-bottom: none; }
+.plan-row .right { display: flex; gap: 8px; align-items: center; }
+.plan-row .muted { color: var(--muted); font-size: 12px; }
+
+.tag { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.tag.active { background: var(--ok-bg); color: var(--ok-text); }
+.tag.pending { background: var(--warn-bg); color: var(--warn-text); }
+.tag.expired { background: var(--err-bg); color: var(--err-text); }
+.tag.unknown { background: #f1f3f4; color: #5f6368; }
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin: 14px 0 8px;
+}
+
+/* Retry hint (1005 / 3007 / 401) — nhẹ, nằm trong quota card */
+.retry-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.retry-hint[hidden] { display: none; }
+.retry-hint.warn { background: var(--warn-bg); color: var(--warn-text); }
+.retry-hint.err { background: var(--err-bg); color: var(--err-text); }
+.retry-hint.ok { background: var(--ok-bg); color: var(--ok-text); }
+
+/* Responsive: co đẹp trên cửa sổ nhỏ */
+@media (max-width: 560px) {
+  body { padding: 12px; }
+  .card { padding: 14px; }
+  .quota-total { flex-direction: column; gap: 8px; }
+  .bucket-row, .plan-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  button { margin-bottom: 8px; }
+}

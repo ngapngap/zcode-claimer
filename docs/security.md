@@ -11,6 +11,7 @@
 - `zcodeJwtToken` là Bearer token cho Start Plan, expiry theo server (phải login lại khi hết hạn → `401`)
 - Lưu ở đâu: file local của Tauri app (AppData) với quyền user, không commit vào git
 - Đừng log JWT ra console / file log
+- Trade-off của `localStorage`: bản dev trước đây lưu JWT trong `localStorage` (chỉ để tiện cho dev/mở bằng trình duyệt thuần). Cách này vẫn hoạt động nhưng JWT nằm trên đĩa dạng text, dễ bị đọc bởi bất kỳ script nào chạy trong WebView; **bản release phải chuyển sang Rust persistence** qua Tauri secure store (file trong `app-data`, quyền user — đã có `load_saved_config`/`save_saved_config` ở `src-tauri/src/persistence.rs`, UI gọi khi mở app và khi thay đổi). Khi dùng Tauri, frontend không dùng `localStorage` cho JWT nữa.
 
 ## Captcha verifyParam
 

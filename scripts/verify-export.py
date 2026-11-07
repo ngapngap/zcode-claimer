@@ -3,7 +3,16 @@
 import json, sys, pathlib
 
 def validate(path):
-    data = json.loads(pathlib.Path(path).read_text())
+    p = pathlib.Path(path)
+    if not p.exists():
+        print(f"LOI: khong thay file export: {path}", file=sys.stderr)
+        print(f"Hay export JSON tu app (muc 3) hoac chi truyen duong dan file that.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        data = json.loads(p.read_text())
+    except json.JSONDecodeError as e:
+        print(f"LOI: file khong phai JSON hop le: {e}", file=sys.stderr)
+        sys.exit(1)
     assert data["provider"] == "glm", "provider must be glm"
     assert data["authType"] == "oauth", "authType must be oauth"
     assert data["data"]["providerSpecificData"]["zcodeJwtToken"], "zcodeJwtToken required"

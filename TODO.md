@@ -1,14 +1,32 @@
-# TODO (phiên mới — hoàn thiện)
+# TODO
 
-## P0 — chạy được claim thật trên Windows
+## Đã xong (kiểm chứng trên Linux, box này)
 
-- [ ] `pnpm install` (cần Node 20+, Rust stable, WebView2)
-- [ ] `pnpm tauri dev` — test slider thật trên Windows
+- [x] Rust backend: build.rs, icons (32/128 PNG, ICO, ICNS), persistence.rs
+  (SavedConfig + ClaimHistory), claim.rs (preview/claim/retry_action),
+  balance.rs, captcha_config.rs, activation.rs
+- [x] Frontend Vite: vite.config.js, `pnpm run build` pass, dist/ có
+  index.html + ui/aliyun-captcha.js
+- [x] ui/aliyun-captcha.js dịch hoàn toàn sang tiếng Việt; xóa
+  ui/zcode-captcha-pool.js (ngoài phạm vi)
+- [x] Frontend dùng `window.wbAliyunCaptcha.solve()`, persistence Rust
+  (`load_saved_config`/`save_saved_config`), retry UI qua `#retryHint`
+- [x] Cross-check Agent2API/router → `docs/crosscheck.md`
+- [x] `scripts/verify-export.py` với JWT giả 3 phần — pass
+- [x] Grep CJK toàn project = 0 dòng; không lộ secret thật
+- [x] README/TODO/docs/release-checklist.md cập nhật; commit + push
+
+## P0 — chạy được claim thật trên Windows (Windows-only)
+
+- [ ] `pnpm tauri dev` — test slider thật trên Windows (cần Node 20+,
+  Rust stable, WebView2)
 - [ ] Login ZCode lấy JWT (thử thủ công trước, ghi lại userId/username/email/zaiBusinessToken)
-- [ ] Nhập JWT + X-Device-Mid vào UI → Preview套餐 (xác nhận `plan_id` hôm nay xuất hiện)
-- [ ] Kéo slider → Claim套餐 1 lần (check response 200 + `data.plan`)
+- [ ] Nhập JWT + X-Device-Mid vào UI → Preview gọi (xác nhận `plan_id` hôm nay xuất hiện)
+- [ ] Kéo slider → Claim gọi 1 lần (check response 200 + `data.plan`)
 - [ ] Export JSON → chạy `scripts/verify-export.py` → `POST /api/providers` vào router
 - [ ] Chạy inference thử qua router (model `glm-5.3`) xem không bị 3007/3012
+- [ ] Kiểm tra activation body rút gọn có bị upstream từ chối không
+  (docs/crosscheck.md mục 4.2)
 
 ## P1 — auto-claim 18:00 VN mỗi ngày
 

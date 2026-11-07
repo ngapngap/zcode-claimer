@@ -5,14 +5,18 @@
   "description": "Minimal Windows Tauri app: ZCode daily plan claim -> export router-compatible JSON",
   "type": "module",
   "scripts": {
-    "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "dev:web": "vite",
+    "build": "vite build",
+    "build:tauri": "tauri build",
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "vite": "^6"
   }
 }

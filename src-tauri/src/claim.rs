@@ -65,18 +65,35 @@ pub enum ClaimFailure {
 }
 
 impl ClaimFailure {
+    /// Nhan tieng Viet hien cho user.
     pub fn label(self) -> &'static str {
         match self {
-            Self::NotFound => "套餐不存在",
-            Self::Unavailable => "活动已结束或尚未开始",
-            Self::AlreadyClaimed => "该账号已领取过",
-            Self::Ineligible => "账号或客户端版本不符合活动资格",
-            Self::QuotaExhausted => "当日领取额度已用尽",
-            Self::InvalidRequest => "参数错误（常见成因：缺少设备标识）",
-            Self::Captcha => "验证码校验未通过",
-            Self::LoginRequired => "登录态已失效，请重新登录",
-            Self::HttpError => "上游 HTTP 错误",
-            Self::Unknown => "未知失败",
+            Self::NotFound => "Goi khong ton tai",
+            Self::Unavailable => "Hoat dong da ket thuc hoac chua bat dau",
+            Self::AlreadyClaimed => "Tai khoan nay da nhan roi",
+            Self::Ineligible => "Tai khoan hoac phien ban client khong du dieu kien",
+            Self::QuotaExhausted => "Han muc nhan trong ngay da het",
+            Self::InvalidRequest => "Tham so loi (thuong do thieu dinh danh thiet bi)",
+            Self::Captcha => "Xac thuc captcha khong dat",
+            Self::LoginRequired => "Phien dang nhap het han, xin dang nhap lai",
+            Self::HttpError => "Loi HTTP tu upstream",
+            Self::Unknown => "That bai khong ro nguyen nhan",
+        }
+    }
+
+    /// Retry action cho frontend:
+    /// - QuotaExhausted (1005) -> "wait_failure_ends_at": doi den failure_ends_at roi claim lai
+    /// - Captcha (3007) -> "retry_captcha": lam lai captcha (slider/mint)
+    /// - LoginRequired (401) -> "relogin": dang nhap lai lay JWT moi
+    /// - AlreadyClaimed (1003) -> "done": coi nhu thanh cong (da nhan hom nay)
+    /// - con lai -> "none"
+    pub fn retry_action(self) -> &'static str {
+        match self {
+            Self::QuotaExhausted => "wait_failure_ends_at",
+            Self::Captcha => "retry_captcha",
+            Self::LoginRequired => "relogin",
+            Self::AlreadyClaimed => "done",
+            _ => "none",
         }
     }
     fn from_code(code: i64) -> Self {
@@ -148,8 +165,8 @@ fn parse_plan(raw: &Value) -> Option<ClaimablePlan> {
 
 pub async fn preview(jwt: &str, device_mid: &str) -> Result<PreviewOutcome, String> {
     let url = format!("{ZCODE_ORIGIN}{PREVIEW_PATH}?app_version={}&platform={}",
-        urlencoding::encode(&app_version()),
-        urlencoding::encode(platform()));
+        crate::urlencode(&app_version()),
+        crate::urlencode(platform()));
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|e| e.to_string())?;
@@ -162,7 +179,7 @@ pub async fn preview(jwt: &str, device_mid: &str) -> Result<PreviewOutcome, Stri
     }
     let resp = req.send().await.map_err(|e| e.to_string())?;
     if resp.status().as_u16() == 404 { return Ok(PreviewOutcome::NotDeployed); }
-    if resp.status().as_u16() == 401 { return Err("登录态已失效".to_string()); }
+    if resp.status().as_u16() == 401 { return Err("Phien dang nhap het han".to_string()); }
     let payload: Value = resp.json().await.map_err(|e| e.to_string())?;
     let code = payload.get("code").and_then(Value::as_i64).unwrap_or(0);
     let data = payload.get("data");
@@ -184,7 +201,7 @@ pub async fn claim(
             plan_id: plan_id.to_string(),
             failure: ClaimFailure::LoginRequired,
             code: 401,
-            message: "领取需要登录态".to_string(),
+            message: "Nhan goi can dang nhap".to_string(),
             failure_ends_at: None,
         });
     }
@@ -245,7 +262,7 @@ fn error_msg(payload: &Value) -> String {
     "HTTP error".to_string()
 }
 
-fn urlencode(s: &str) -> String {
+pub fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.as_bytes() {
         let c = *b as char;

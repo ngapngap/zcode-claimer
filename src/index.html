@@ -4,50 +4,67 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZCode Claimer</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="app">
-    <h1>ZCode Claimer</h1>
-    <p class="subtitle">Claim Start Plan hàng ngày → export JSON cho router</p>
+    <div class="header">
+      <div>
+        <h1>ZCode Claimer</h1>
+        <p class="subtitle">Claim Start Plan hàng ngày → xem quota → export JSON cho router</p>
+      </div>
+      <span class="badge" title="Chỉ dùng cho ZCode">ZCode only</span>
+    </div>
 
-    <div class="card" id="step-login">
+    <!-- Quota card: check tài khoản / số dư hiện tại -->
+    <section class="card quota-card" id="quotaCard" aria-label="Quota hôm nay">
+      <div class="quota-head">
+        <h2>Quota hôm nay</h2>
+        <button id="btnRefreshQuota" class="small" type="button">↻ Làm mới</button>
+      </div>
+      <div id="quotaSummary" class="quota-empty">Chưa có dữ liệu — nhập JWT ở mục 1 rồi bấm Làm mới</div>
+      <div id="quotaBuckets"></div>
+      <div id="quotaPlans"></div>
+      <div id="retryHint" class="retry-hint" role="status" hidden></div>
+    </section>
+
+    <div class="card">
       <h2>1. Login ZCode</h2>
-      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken" /></label>
-      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định)</span>
-        <input id="deviceMid" type="text" placeholder="UUID" />
-        <button id="genMid" class="small">Tạo mới</button>
+      <label>JWT <input id="jwt" type="text" placeholder="zcodeJwtToken" autocomplete="off" /></label>
+      <label>X-Device-Mid <span class="hint">(để trống sẽ tự sinh UUID, phải ổn định theo account)</span>
+        <input id="deviceMid" type="text" placeholder="UUID" autocomplete="off" />
+        <button id="genMid" class="small" type="button">Tạo mới</button>
       </label>
       <label>User ID <input id="userId" type="text" placeholder="userId" /></label>
       <label>Username <input id="username" type="text" placeholder="username" /></label>
       <label>Email <input id="email" type="text" placeholder="email" /></label>
       <label>ZAI Business Token <input id="bizToken" type="text" placeholder="zaiBusinessToken" /></label>
-      <button id="btnPreview" class="primary">Báo activation + Preview套餐</button>
+      <button id="btnPreview" class="primary" type="button">Báo activation + Preview gói</button>
       <div id="previewResult" class="result"></div>
     </div>
 
     <div class="card" id="step-claim" style="display:none">
-      <h2>2. Claim套餐</h2>
+      <h2>2. Claim gói</h2>
       <div id="plansList"></div>
-      <button id="btnCaptcha" class="primary">Làm captcha (slider)</button>
-      <button id="btnClaim" class="primary" disabled>Lãnh套餐</button>
+      <button id="btnCaptcha" class="primary" type="button">Làm captcha (slider)</button>
+      <button id="btnClaim" class="primary" type="button" disabled>Lãnh gói</button>
       <div id="claimResult" class="result"></div>
     </div>
 
     <div class="card" id="step-export" style="display:none">
       <h2>3. Export router</h2>
-      <button id="btnExport" class="primary">Tạo file export.json</button>
+      <button id="btnExport" class="primary" type="button">Tạo file export.json</button>
       <pre id="exportJson" class="code"></pre>
-      <button id="btnDownload" class="small">Tải về</button>
-      <p class="hint">Import: <code>POST /api/providers</code> với body là JSON trên (router).</p>
+      <button id="btnDownload" class="small" type="button">Tải về</button>
+      <p class="hint">Import: <code>POST /api/providers</code> với body là JSON trên (router trên máy chủ).</p>
     </div>
   </div>
 
-  <!-- Aliyun captcha container - SDK sẽ inject slider vào đây -->
   <div id="captcha-container" style="position:fixed;left:-9999px;top:0;width:360px;height:40px;"></div>
   <div id="captcha-button" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;"></div>
 
-  <script src="https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js"></script>
-  <script src="main.js"></script>
+  <!-- ui/aliyun-captcha.js load 1 lan duy nhat (window.wbAliyunCaptcha); main.js dung solve() -->
+  <script src="/ui/aliyun-captcha.js"></script>
+  <script type="module" src="/main.js"></script>
 </body>
 </html>
