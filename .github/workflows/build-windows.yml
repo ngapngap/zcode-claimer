@@ -58,7 +58,7 @@ jobs:
       # Can publish dang tam metadata len GitHub Release. App check tai
       # https://raw.githubusercontent.com/ngapngap/zcode-claimer/main/updates/latest.json
       - name: Publish update manifest (latest.json) tren Release + branch updates/
-        if: startsWith(github.ref, 'refs/tags/v') && secrets.TAURI_SIGNING_PRIVATE_KEY != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
