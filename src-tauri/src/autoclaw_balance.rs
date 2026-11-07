@@ -1,4 +1,4 @@
-//! AutoClaw balance (POINTS - diem, copy from Agent2API autoclaw/balance.rs).
+//! AutoClaw balance (POINTS - diem). Ported from the AutoClaw desktop protocol.
 //! All requests via userapi domain with signed headers + Bearer.
 //! - GET {userapi}/agent-assetmgr/api/v2/wallets?biz_app_id=autoclaw (main)
 //! - fallback GET /agent-assetmgr/api/v1/wallet-instances?wallet_type=all&wallet_scope=all
@@ -319,6 +319,11 @@ async fn query_points(credentials: &AutoClawCredentials) -> Result<Value, String
     }
     let data = wallet_payload.get("data").cloned().unwrap_or(Value::Null);
     let code_ok = wallet_payload.get("code").and_then(Value::as_i64) == Some(0);
+    let v2_error = match wallet_payload.get("code").and_then(Value::as_i64) {
+        Some(c) if c != 0 => Some(format!("v2 code={} {}", c,
+            wallet_payload.get("msg").and_then(Value::as_str).unwrap_or(""))),
+        _ => None,
+    };
     let (total_balance, wallets, raw) = if code_ok
         && data.get("wallets").and_then(Value::as_array).is_some()
     {
@@ -356,14 +361,16 @@ async fn query_points(credentials: &AutoClawCredentials) -> Result<Value, String
         }
         let legacy_data = legacy.get("data").cloned().unwrap_or(Value::Null);
         if legacy.get("code").and_then(Value::as_i64) != Some(0) || legacy_data.is_null() {
-            let msg = legacy.get("msg").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string)
+            let mut msg = legacy.get("msg").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string)
                 .unwrap_or_else(|| format!(
                     "Truy van diem tra ve bat thuong code={}",
                     legacy.get("code").and_then(Value::as_i64)
-                        .or_else(|| wallet_payload.get("code").and_then(Value::as_i64))
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "null".to_string())
                 ));
+            if let Some(v2_err) = v2_error {
+                msg = format!("{} (v2: {})", msg, v2_err);
+            }
             return Err(msg);
         }
         let instances = legacy_data.get("wallet_instances").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -409,15 +416,16 @@ pub async fn query_balance(credentials: &AutoClawCredentials) -> Result<AutoClaw
         Ok(v) => (v, Value::Null),
         Err(e) => (Value::Null, Value::String(e)),
     };
-    let available = points.get("totalBalance").cloned().unwrap_or(Value::Null);
     let wallets_raw = points.get("wallets").cloned().unwrap_or_else(|| Value::Array(Vec::new()));
     let expiring = points.get("expiring").cloned().unwrap_or(Value::Null);
     let mut wallets: Vec<AutoClawBucket> = Vec::new();
+    let mut wallets_sum = 0.0;
     if let Some(arr) = wallets_raw.as_array() {
         for w in arr {
             let name = w.get("displayName").and_then(Value::as_str).unwrap_or("").to_string();
             let type_ = w.get("type").and_then(Value::as_str).unwrap_or("").to_string();
             let balance = number_or_null(w.get("balance")).unwrap_or(0.0);
+            wallets_sum += balance;
             let view = w.get("balanceView").and_then(Value::as_str).unwrap_or("").to_string();
             wallets.push(AutoClawBucket {
                 bucket_id: type_.clone(),
@@ -427,13 +435,19 @@ pub async fn query_balance(credentials: &AutoClawCredentials) -> Result<AutoClaw
             });
         }
     }
+    let available = match points.get("totalBalance") {
+        Some(v) if !v.is_null() => v.clone(),
+        _ if !wallets.is_empty() => json!(wallets_sum),
+        _ => Value::Null,
+    };
     let mut raw = Map::new();
     raw.insert("points".to_string(), points.get("raw").cloned().unwrap_or(Value::Null));
     if !expiring.is_null() {
         raw.insert("expiring".to_string(), expiring.clone());
     }
-    if !subscription_error.is_null() {
-        raw.insert("subscriptionError".to_string(), subscription_error);
+    let sub_err_text = subscription_error.as_str().unwrap_or("").to_string();
+    if !sub_err_text.is_empty() {
+        raw.insert("subscriptionError".to_string(), Value::String(sub_err_text));
     }
     Ok(AutoClawBalanceResult {
         available,

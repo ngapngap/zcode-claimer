@@ -1,4 +1,4 @@
-//! AutoClaw desktop Electron safeStorage decryption (copy from Agent2API crypto.rs).
+//! AutoClaw desktop Electron safeStorage decryption (ported from desktop protocol).
 //! DPAPI (Windows only) + AES-256-GCM for token/refreshToken enc: fields in
 //! %APPDATA%/AutoClaw/auth.json. Plaintext (non-enc:) values pass through.
 

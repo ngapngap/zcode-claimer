@@ -83,7 +83,13 @@
             <h2>AutoClaw</h2>
             <p class="hint">Số dư tính theo <strong>điểm</strong> (không phải token). Đọc login AutoClaw desktop local.</p>
           </div>
-          <button id="btnAutoclaw" class="ghost small" type="button">Xem điểm AutoClaw</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="autoclawRegion" title="Vùng AutoClaw">
+              <option value="intl">Quốc tế</option>
+              <option value="cn">Trung Quốc</option>
+            </select>
+            <button id="btnAutoclaw" class="ghost small" type="button">Xem điểm AutoClaw</button>
+          </div>
         </div>
         <div id="autoclawResult"><p class="hint">Bấm nút để tải số điểm AutoClaw.</p></div>
       </section>

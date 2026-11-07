@@ -610,7 +610,7 @@ function fmtNum(v) {
 $("btnAutoclaw")?.addEventListener("click", async () => {
   const box = $("autoclawResult");
   box.innerHTML = '<p class="hint">Đang tải điểm AutoClaw…</p>';
-  const region = "intl";
+  const region = ($("autoclawRegion") || {}).value || "intl";
   try {
     const r = await invoke("query_autoclaw_balance", { token: "", refreshToken: null, deviceId: null, region });
     const avail = r.available ?? 0;
@@ -622,9 +622,10 @@ $("btnAutoclaw")?.addEventListener("click", async () => {
     }
     if (r.expiring && r.expiring.points != null) html += `<p class="hint">Sắp hết hạn: ${esc(r.expiring.text || fmtNum(r.expiring.points) + " điểm")}</p>`;
     if (r.subscription && r.subscription.planName) html += `<p class="hint">Gói: ${esc(r.subscription.planName)} · ${esc(r.subscription.status || "")}</p>`;
+    if (r.raw && r.raw.subscriptionError) html += `<p class="hint">Không tải được gói: ${esc(String(r.raw.subscriptionError))}</p>`;
     box.innerHTML = html;
   } catch (e) {
-    box.innerHTML = `<p class="hint">Lỗi tải điểm AutoClaw: ${esc(String(e))}</p>`;
+    box.innerHTML = `<p class="hint">Lỗi tải điểm AutoClaw: ${esc(String(e))} (thử đổi vùng Quốc tế/Trung Quốc nếu đăng nhập AutoClaw desktop ở vùng kia)</p>`;
   }
 });
 

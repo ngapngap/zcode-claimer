@@ -1,5 +1,5 @@
-//! AutoClaw credential sources (copy from Agent2API autoclaw/credentials.rs +
-//! region.rs, trimmed: no cache, no refresh, no env override).
+//! AutoClaw credential sources (ported from AutoClaw desktop protocol;
+//! env override + AES-key cache restored).
 //!
 //! Priority: 1) %APPDATA%/AutoClaw/auth.json (DPAPI-decrypted token/refreshToken),
 //! 2) ~/.openclaw-autoclaw/openclaw.json plaintext X-Authorization JWT (no refresh).
@@ -263,8 +263,22 @@ fn from_gateway_config(region: Region) -> Result<AutoClawCredentials, String> {
         .get("models")
         .and_then(|m| m.get("providers"))
         .and_then(Value::as_object);
+    fn provider_score(name: &str, provider: &Value) -> i32 {
+        let lower = name.to_lowercase();
+        let mut score = 0;
+        if lower.contains("autoclaw") || lower.contains("glm") || lower.contains("zcode") { score += 10; }
+        if provider.get("baseUrl").and_then(Value::as_str).unwrap_or("").to_lowercase().contains("autoglm") { score += 5; }
+        score
+    }
+    let mut scored: Vec<(i32, Value)> = snapshot.json
+        .get("models")
+        .and_then(|m| m.get("providers"))
+        .and_then(Value::as_object)
+        .map(|map| map.iter().map(|(k, v)| (provider_score(k, v), v.clone())).collect())
+        .unwrap_or_default();
+    scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
     let mut token = String::new();
-    'outer: for provider in providers.into_iter().flat_map(|map| map.values()) {
+    'outer: for (_, provider) in scored.iter() {
         let models = match provider.get("models").and_then(Value::as_array) {
             Some(models) => models,
             None => continue,
@@ -277,10 +291,7 @@ fn from_gateway_config(region: Region) -> Result<AutoClawCredentials, String> {
             for name in ["X-Authorization", "x-authorization"] {
                 if let Some(Value::String(candidate)) = headers.get(name) {
                     let normalized = autoclaw_crypto::strip_bearer(candidate);
-                    if !normalized.is_empty() {
-                        token = normalized;
-                        break 'outer;
-                    }
+                    if !normalized.is_empty() { token = normalized; break 'outer; }
                 }
             }
         }
