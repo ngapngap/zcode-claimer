@@ -41,7 +41,7 @@ pnpm tauri build      # tạo .msi / .exe
 6. **Export**: tạo JSON, chạy `python scripts/verify-export.py`, sau đó
    `POST /api/providers` vào router. Chạy inference thử qua router
    (model `glm-5.3`) xem không bị 3007/3012.
-7. **appVersion**: giữ `3.14.0` theo bản gốc Agent2API (router dùng
+7. **appVersion**: giữ `3.14.0` theo bản gốc (router dùng
    `3.16.3` mới hơn). Nếu upstream yêu cầu bản mới, chỉ cần đặt biến
    môi trường `ZCODE_APP_VERSION=3.16.3` khi chạy — không sửa code.
 8. **Release**: `pnpm tauri build` → `.msi` / `.exe`. Icons đã có đủ

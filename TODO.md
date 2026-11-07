@@ -11,7 +11,7 @@
   ui/zcode-captcha-pool.js (ngoài phạm vi)
 - [x] Frontend dùng `window.wbAliyunCaptcha.solve()`, persistence Rust
   (`load_saved_config`/`save_saved_config`), retry UI qua `#retryHint`
-- [x] Cross-check Agent2API/router → `docs/crosscheck.md`
+- [x] Cross-check bản tham chiếu/router → `docs/crosscheck.md`
 - [x] `scripts/verify-export.py` với JWT giả 3 phần — pass
 - [x] Grep CJK toàn project = 0 dòng; không lộ secret thật
 - [x] README/TODO/docs/release-checklist.md cập nhật; commit + push
@@ -51,5 +51,5 @@
 
 - Vào thư mục: `/home/ubuntu/zcode-claimer/`
 - Đọc theo thứ tự: `README.md` → `docs/architecture.md` → `docs/protocol.md` → `docs/integration.md` → `docs/security.md` → `TODO.md` (file này)
-- Tham khảo (chỉ đọc, không sửa): `/home/ubuntu/Agent2API/desktop-tauri/.../providers/zcode/` và `/home/ubuntu/router/oss/`
+- Tham khảo (chỉ đọc, không sửa): `/home/ubuntu/router/oss/`
 - Giờ claim: 18:00 VN = 19:00 Bắc Kinh (mở bán); window dùng 22:00–08:00 VN

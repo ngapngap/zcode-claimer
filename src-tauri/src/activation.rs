@@ -1,5 +1,4 @@
 //! Activation report (app_launch / app_daily_active).
-//! Ported from Agent2API `providers/zcode/activation.rs`.
 //! Must be called BEFORE preview — upstream rejects probe without it.
 
 use serde_json::{json, Value};

@@ -1,4 +1,4 @@
-# ZCode claim protocol (lấy từ Agent2API)
+# ZCode claim protocol
 
 ## 2 endpoint
 
@@ -43,7 +43,7 @@ Không có API "daily". Cách là mỗi ngày `plan_id` mới (`...-0928` → `.
 - Slider path: `initAliyunCaptcha({mode:"popup"})` → warmup 2.1s → click invisible button → user kéo → callback trả `{sceneId,certifyId,deviceToken,data}` → forward làm `verifyParam`
 - Traceless path (mint cho background): `startTracelessVerification()` → base64 ~280 chars, TTL ~95s, one-instance-one-mint, pool target 3
 
-Nguồn code: `desktop-tauri/src-tauri/server/src/server/core/providers/zcode/{claim.rs,activation.rs,captcha.rs}` trong Agent2API.
+Nguồn: protocol ZCode (endpoints zcode.z.ai; xem `claim.rs`, `activation.rs`, `captcha.rs`).
 
 ## Quota / balance (thêm sau)
 

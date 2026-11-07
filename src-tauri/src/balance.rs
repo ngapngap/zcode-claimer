@@ -1,5 +1,4 @@
-//! ZCode balance/quota query. Ported from Agent2API
-//! `desktop-tauri/src-tauri/server/src/server/core/providers/zcode/balance.rs`
+//! ZCode balance/quota query (theo protocol ZCode).
 //! GET https://zcode.z.ai/api/v1/zcode-plan/billing/balance?app_version=3.14.0&platform=win32-x64
 //!
 //! Ngu nghia official (zai-org/ZCode zaiStartPlanBilling.ts) duoc giu nguyen:
