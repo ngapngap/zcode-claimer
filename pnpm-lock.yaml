@@ -24,9 +24,6 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.12.4
-      minisign:
-        specifier: ^2.2.0
-        version: 2.2.0
       vite:
         specifier: ^6
         version: 6.4.5
@@ -423,9 +420,6 @@ packages:
   '@types/estree@1.0.10':
     resolution: {integrity: sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==}
 
-  buffer-xor@2.0.2:
-    resolution: {integrity: sha512-eHslX0bin3GB+Lx2p7lEYRShRewuNZL3fUl4qlVJGGiwoPGftmt8JQgk2Y9Ji5/01TnVDo33E5b5O3vUB1HdqQ==}
-
   esbuild@0.25.12:
     resolution: {integrity: sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==}
     engines: {node: '>=18'}
@@ -445,26 +439,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
-  ini@1.3.8:
-    resolution: {integrity: sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew==}
-
-  minimist@1.2.8:
-    resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
-
-  minisign@2.2.0:
-    resolution: {integrity: sha512-7eJv/gA95fjpMQWXL4ONofoDa5bf/c6UQ0xfDm1lEzliKAbAC5OSEl9duu/jJD/8I3Iz3DYiQg3tvoUuDqMORg==}
-    hasBin: true
-
-  nan@2.30.0:
-    resolution: {integrity: sha512-P5mokDkSvCGBz6mZDD/2l+w9QoICRXdCyZ9ONGmTePr40oihJg3Kpn0YU3twKd6PJnwSlLBWNQeOT6yWEV2c4A==}
-
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  node-gyp-build@4.8.4:
-    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
 
   picocolors@1.1.1:
@@ -482,12 +459,6 @@ packages:
     resolution: {integrity: sha512-3Ve5VH1hacCVutdpbmu/htg4kz+JCOIWgy4Q3hjHPYGHeHeIElNHJ0LcJ3rCfIsd5G7qOl5k5mwpzGMj9kdHPA==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
-
-  safe-buffer@5.2.1:
-    resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
-
-  sodium-native@2.4.9:
-    resolution: {integrity: sha512-mbkiyA2clyfwAyOFIzMvsV6ny2KrKEIhFVASJxWfsmgfUEymgLIS2MLHHcGIQMkrcKhPErRaMR5Dzv0EEn+BWg==}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -758,10 +729,6 @@ snapshots:
 
   '@types/estree@1.0.10': {}
 
-  buffer-xor@2.0.2:
-    dependencies:
-      safe-buffer: 5.2.1
-
   esbuild@0.25.12:
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.25.12
@@ -798,21 +765,7 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  ini@1.3.8: {}
-
-  minimist@1.2.8: {}
-
-  minisign@2.2.0:
-    dependencies:
-      buffer-xor: 2.0.2
-      minimist: 1.2.8
-      sodium-native: 2.4.9
-
-  nan@2.30.0: {}
-
   nanoid@3.3.20: {}
-
-  node-gyp-build@4.8.4: {}
 
   picocolors@1.1.1: {}
 
@@ -855,14 +808,6 @@ snapshots:
       '@rollup/rollup-win32-x64-gnu': 4.67.5
       '@rollup/rollup-win32-x64-msvc': 4.67.5
       fsevents: 2.3.3
-
-  safe-buffer@5.2.1: {}
-
-  sodium-native@2.4.9:
-    dependencies:
-      ini: 1.3.8
-      nan: 2.30.0
-      node-gyp-build: 4.8.4
 
   source-map-js@1.2.2: {}
 

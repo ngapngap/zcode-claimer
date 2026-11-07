@@ -20,7 +20,6 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "minisign": "^2.2.0",
     "vite": "^6"
   }
 }

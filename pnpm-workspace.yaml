@@ -1,3 +1,2 @@
 allowBuilds:
   esbuild: true
-  sodium-native: true
