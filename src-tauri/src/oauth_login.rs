@@ -48,7 +48,7 @@ pub struct ZcodeLoginCredentials {
     pub device_mid: String,
 }
 
-struct CliLogin {
+pub struct CliLogin {
     pub flow_id: String,
     pub poll_token: String,
     pub poll_interval_sec: i64,
