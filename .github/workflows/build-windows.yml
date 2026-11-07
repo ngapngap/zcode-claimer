@@ -1,0 +1,85 @@
+# Build installer Windows x64 (Tauri) va upload artifact + release.
+# Thu hanh dong: tag v* (vd git tag v0.1.0 && git push origin v0.1.0)
+# hoac chay tay qua tab Actions (workflow_dispatch).
+
+name: Build Windows x64
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Rust (stable, x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust (cargo)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (JS)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (Vite)
+        run: pnpm run build
+
+      - name: Build Tauri app (Windows x64)
+        working-directory: src-tauri
+        run: pnpm exec tauri build
+
+      - name: Collect installer files
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri\target\release\bundle"
+          Write-Host "Bundle:" $bundle
+          Get-ChildItem $bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          $out = "installer"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          # Chi lay MSI + NSIS setup exe trong thu muc msix/nsis dep, bo qua portable.
+          Get-ChildItem $bundle -Recurse -File -Include *.msi, *.exe | ForEach-Object {
+            Copy-Item $_.FullName -Destination $out -Force
+          }
+          Get-ChildItem $out -File | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Upload artifact (installer Windows x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcode-claimer-windows-x64
+          path: installer/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub Release (khi push tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/*
+          generate_release_notes: true
+          body: |
+            ## ZCode Claimer - Windows x64
+
+            - Cai dat: chay file `.exe` (NSIS) hoac `.msi` trong muc release.
+            - Yeu cau: Windows 10/11 64-bit, WebView2 (thuong co san).
+            - Luu y: nhap JWT + X-Device-Mid on dinh theo account (xem README).
