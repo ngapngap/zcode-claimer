@@ -1,6 +1,6 @@
 # zcode-claimer
 
-Minimal Windows Tauri app — chỉ làm đúng 1 việc: **claim ZCode Start Plan hàng ngày** và **export JSON tương thích router**.
+Minimal Windows Tauri app — chỉ làm đúng 1 việc: **claim ZCode Start Plan hàng ngày** và **export JSON chứa token để dùng tiếp**.
 
 Tách ra từ `Agent2API` (fork), lột bỏ 95% phần thừa:
 
@@ -15,7 +15,7 @@ Tách ra từ `Agent2API` (fork), lột bỏ 95% phần thừa:
 3. **Preview** `GET /api/v1/zcode-plan/billing/preview?app_version=3.14.0&platform=win32-x64` → lấy `plan_id` hôm nay
 4. **Slider captcha** (Aliyun SDK trong Tauri WebView) → lấy `verifyParam`
 5. **Claim** `POST /api/v1/zcode-plan/billing/claim {"plan_id":"..."}`
-6. **Export** JSON đúng schema `provider_conns` của router → import vào `/api/providers`
+6. **Export** JSON (`provider: glm`, `authType: oauth`) ra thư mục `export/`
 
 ## Giờ claim (giờ Việt Nam)
 
@@ -28,7 +28,7 @@ Tách ra từ `Agent2API` (fork), lột bỏ 95% phần thừa:
 > Lưu ý: scheduler 18:00 VN tự động là tính năng ngoài phạm vi hiện tại
 > (UI thủ công: Login → Preview → Captcha → Claim → Export). Xem TODO P1.
 
-## Export format (router)
+## Export format
 
 ```json
 {
@@ -52,7 +52,7 @@ Tách ra từ `Agent2API` (fork), lột bỏ 95% phần thừa:
 }
 ```
 
-File này POST thẳng vào `POST /api/providers` của router (hoặc ghi trực tiếp vào `provider_conns` SQLite).
+File JSON được ghi ra thư mục `export/`, chứa JWT và token ZCode.
 
 ## Cấu trúc
 
@@ -77,15 +77,9 @@ zcode-claimer/
 ├── ui/
 │   └── aliyun-captcha.js   # slider captcha (đã dịch sang tiếng Việt)
 ├── vite.config.js      # copy ui/aliyun-captcha.js vào dist/ui/ khi build
-├── docs/
-│   ├── protocol.md
-│   ├── architecture.md
-│   ├── integration.md
-│   ├── security.md
-│   ├── crosscheck.md   # đối chiếu Agent2API / router
-│   └── release-checklist.md  # checklist Windows-only
+├── docs/               # protocol, architecture, security, release-checklist
 ├── scripts/
-│   └── verify-export.py  # kiểm tra JSON export hợp lệ với router
+│   └── verify-export.py  # kiểm tra JSON export hợp lệ
 └── export/             # output JSON ở đây
 ```
 
@@ -99,4 +93,4 @@ pnpm tauri build
 
 Yêu cầu: Node 20+, Rust stable, WebView2 (Windows 10/11 có sẵn).
 
-Không đụng vào Agent2API hay router — chỉ tham khảo protocol. router đã hỗ trợ ZCode sẵn qua provider `glm` (Start Plan executor), nên export là xong.
+Không đụng vào Agent2API — chỉ tham khảo protocol.
