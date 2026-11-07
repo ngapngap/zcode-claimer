@@ -181,26 +181,31 @@ function esc(s) {
 
 function usageSummary(r) {
   if (!r) return { cls: "muted", text: "Chưa có dữ liệu" };
-  const total = Number(r.total_remaining) || 0;
-  const used = Number(r.total_used) || 0;
-  const granted = Number(r.total_granted) || total + used;
-  const pct = granted > 0 ? Math.min(100, Math.round(used / granted * 100)) : 0;
-  if (pct > 90) return { cls: "warn", text: `Gần hết: còn ${fmtUnits(total)} / ${fmtUnits(granted)}`, pct };
-  return { cls: "ok", text: `Còn ${fmtUnits(total)} / ${fmtUnits(granted)}`, pct };
+  if (r.error) return { cls: "warn", text: r.error, pct: null };
+  if (!r.has_quota) return { cls: "muted", text: "Không có hạn mức", pct: null };
+  const remaining = Number(r.total_remaining) || 0;
+  const granted = Number(r.total_granted) || 0;
+  const pctLeft = granted > 0 ? Math.max(0, Math.min(100, Math.round(remaining / granted * 100))) : 0;
+  if (pctLeft < 10) return { cls: "warn", text: `Gần hết: còn ${fmtUnits(remaining)} / ${fmtUnits(granted)}`, pct: pctLeft, remaining, granted };
+  return { cls: "ok", text: `Còn ${fmtUnits(remaining)} / ${fmtUnits(granted)}`, pct: pctLeft, remaining, granted };
 }
 
 function usageCell(a) {
   const r = usageCache.get(a.user_id);
   if (!r) return '<span class="usage-cell muted">Chưa có dữ liệu</span>';
   const s = usageSummary(r);
-  const pct = s.pct ?? 0;
+  if (s.pct === null) {
+    // Giong Agent2API: khong co bucket thi hien trung tinh, loi thi bao ro (khong gia ma 0)
+    return `<span class="usage-cell ${s.cls}" title="${esc(s.text)}">${esc(s.text)}</span>`;
+  }
+  const pctLeft = s.pct;
   const bal = r.balances?.[0];
   const name = bal ? (bal.show_name || bal.meter || bal.bucket_id || "") : "";
   const pending = (r.plans || []).filter((p) => p.status === "pending").length;
-  const barCls = pct > 90 ? "low" : "";
-  const bar = `<span class="bar" style="display:inline-block;width:120px;vertical-align:middle"><span class="bar-fill ${barCls}" style="width:${pct}%"></span></span>`;
+  const barCls = pctLeft < 10 ? "low" : "";
+  const bar = `<span class="bar" style="display:inline-block;width:120px;vertical-align:middle"><span class="bar-fill ${barCls}" style="width:${pctLeft}%"></span></span>`;
   const pendingBadge = pending ? ` <span class="tag pending">${pending} gói chờ hiệu lực</span>` : "";
-  return `<span class="usage-cell ${s.cls}" title="${esc(s.text)}">${name ? esc(name) + " — " : ""}${bar} <span class="meta">${pct}%</span>${pendingBadge}</span>`;
+  return `<span class="usage-cell ${s.cls}" title="${esc(s.text)}">${name ? esc(name) + " — " : ""}${bar} <span class="meta">còn ${pctLeft}%</span>${pendingBadge}</span>`;
 }
 
 function actionsCell(a) {
@@ -260,8 +265,13 @@ async function queryUsageOnce(userId) {
     if (userId === currentUserId) renderQuota(r);
     renderAccountsTable();
   } catch (e) {
-    const el = $("quotaSummary");
-    if (el && userId === currentUserId) el.innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi số dư: ${esc(String(e))}</div>`;
+    // Loi ban ra cot So du cua chinh account do (khong chi main quota card)
+    usageCache.set(userId, { error: String(e), has_quota: false, balances: [], plans: [], total_remaining: 0, total_used: 0, total_granted: 0 });
+    if (userId === currentUserId) {
+      const el = $("quotaSummary");
+      if (el) el.innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi số dư: ${esc(String(e))}</div>`;
+    }
+    renderAccountsTable();
   }
 }
 
@@ -431,7 +441,7 @@ function renderQuota(r) {
   // plans
   if (r.plans?.length) {
     $("quotaPlans").innerHTML = '<div class="section-title">Chi tiết gói</div>' + r.plans.map(p =>
-      `<div class="plan-row"><span><b>${p.name || p.plan_id}</b> <span style="color:#6e6e73;font-size:12px">${p.plan_id}</span></span><span style="display:flex;gap:8px;align-items:center">${stateTag(p.status)}<span style="font-size:12px;color:#6e6e73">${p.ends_at ? "Đến " + fmtTime(p.ends_at) : ""}</span></span></div>`
+      `<div class="plan-row"><span><b>${p.name || p.plan_id}</b> <span style="color:#6e6e73;font-size:12px">${p.plan_id}</span></span><span style="display:flex;gap:8px;align-items:center">${stateTag(p.status)}<span style="font-size:12px;color:#6e6e73">${p.has_pending ? "Hiệu lực " + fmtTime(p.pending_until) : ""}${p.ends_at ? "Đến " + fmtTime(p.ends_at) : ""}</span></span></div>`
     ).join("");
   } else $("quotaPlans").innerHTML = "";
 }
@@ -444,10 +454,16 @@ async function refreshQuota() {
     const mid = await ensureMid();
     const r = await invoke("query_balance", { jwt, deviceMid: mid });
     renderQuota(r);
-    if (currentUserId) usageCache.set(currentUserId, r);
-    renderAccountsTable();
+    if (currentUserId) {
+      usageCache.set(currentUserId, r);
+      renderAccountsTable();
+    }
   } catch (e) {
-    $("quotaSummary").innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi quota: ${e}</div>`;
+    $("quotaSummary").innerHTML = `<div style="color:#a50e0e;font-size:13px">Lỗi quota: ${esc(String(e))}</div>`;
+    if (currentUserId) {
+      usageCache.set(currentUserId, { error: String(e), has_quota: false, balances: [], plans: [], total_remaining: 0, total_used: 0, total_granted: 0 });
+      renderAccountsTable();
+    }
   }
 }
 $("btnRefreshQuota").onclick = refreshQuota;
