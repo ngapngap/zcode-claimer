@@ -76,7 +76,7 @@ input { font: inherit; }
 
 /* ---------- Khung 1 cột: header + stepper + stats + bảng + update strip ---------- */
 .app {
-  max-width: 800px; margin: 0 auto; min-height: 100vh;
+  min-height: 100vh;
   padding: 16px; display: flex; flex-direction: column; gap: 16px;
   position: relative; z-index: 1;
 }

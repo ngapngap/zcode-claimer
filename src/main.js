@@ -287,8 +287,18 @@ function usageCell(a) {
 function expiryCell(a) {
   if (a.type === "autoclaw") {
     const r = pointsCache.get(a.user_id);
-    const txt = r?.expiring?.text || (r?.expiring?.points != null ? fmtNum(r.expiring.points) + " điểm" : "");
-    return txt ? `<span title="${esc(txt)}">Sắp hết hạn: ${esc(txt)}</span>` : '<span class="meta">—</span>';
+    const exp = r?.expiring || null;
+    const pts = exp != null && exp.points != null ? Number(exp.points) : NaN;
+    const hasPts = Number.isFinite(pts);
+    // API trả text gốc tiếng Trung (vd "积分将于3天内到期") — không hiện nguyên:
+    // chỉ lấy số ngày từ đó, còn lại dịch hết sang tiếng Việt.
+    const m = exp && typeof exp.text === "string" ? exp.text.match(/(\d+)\s*天/) : null;
+    const days = m ? Number(m[1]) : NaN;
+    let txt = "";
+    if (hasPts && Number.isFinite(days)) txt = `Sắp hết hạn: ${fmtNum(pts)} điểm trong ${days} ngày`;
+    else if (hasPts) txt = `Sắp hết hạn: ${fmtNum(pts)} điểm`;
+    else if (Number.isFinite(days)) txt = `Sắp hết hạn trong ${days} ngày`;
+    return txt ? `<span title="${esc(txt)}">${esc(txt)}</span>` : '<span class="meta">—</span>';
   }
   const r = usageCache.get(a.user_id);
   if (!r || r.error) return '<span class="meta">—</span>';
@@ -328,9 +338,17 @@ function renderSummary() {
   set("statAccounts", String(accountsCache.length));
   set("statAccountsSub", `${zcodeAccts.length} ZCode · ${acAccts.length} AutoClaw`);
   set("statTokens", fmtUnits(totalLeft));
-  set("statTokensSub", `ZCode · tổng còn / ${fmtUnits(totalGranted)}`);
+  set("statTokensSub", `ZCode · tổng được cấp ${fmtUnits(totalGranted)}`);
   set("statPoints", acAccts.length ? fmtNum(acPoints) : "—");
-  set("statPointsSub", acAccts.length ? "Điểm tặng · Điểm gói" : "Chưa có tài khoản AutoClaw");
+  // Subtitle Điểm AutoClaw: lấy tên ví thật đang tải được (qua walletNameVi),
+  // loại trùng — không hardcode tên ví nào nữa.
+  const acWalletNames = [...new Set(
+    acAccts
+      .map((a) => pointsCache.get(a.user_id))
+      .filter((r) => r && Array.isArray(r.wallets))
+      .flatMap((r) => r.wallets.map((w) => walletNameVi(w.show_name || w.bucket_id) || "Điểm"))
+  )];
+  set("statPointsSub", acAccts.length ? (acWalletNames.length ? acWalletNames.join(" · ") : "—") : "Chưa có tài khoản AutoClaw");
 }
 
 function statusCell(a) {
@@ -1051,7 +1069,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.12";
+let appVersionText = "v0.1.13";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
