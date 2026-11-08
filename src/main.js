@@ -815,8 +815,13 @@ async function queryPointsOnce(userId) {
   // expires_at lưu theo ms (Rust: exp * 1000); null/không phải số = chưa
   // biết hạn, cứ gọi như cũ. Backend không tự refresh token nên chặn ở đây
   // không làm mất đường refresh nào.
-  const expMs = Number(a.autoclaw_expires_at);
-  if (Number.isFinite(expMs) && Date.now() > expMs) {
+  // CHÚ Ý: Number(null) === 0 (không phải NaN) nên KHÔNG được Number() trực
+  // tiếp — null mà lọt vào đây sẽ bị coi là hết hạn từ epoch, tài khoản vừa
+  // đăng nhập xong đã báo "Hết hạn đăng nhập" dù token còn mới (token Zai
+  // không có claim exp nên Rust không trả expiresAt).
+  const rawExp = a.autoclaw_expires_at;
+  const expMs = (rawExp === null || rawExp === undefined || rawExp === "") ? NaN : Number(rawExp);
+  if (Number.isFinite(expMs) && expMs > 0 && Date.now() > expMs) {
     pointsCache.set(userId, { expired: true });
     renderAccountsTable();
     return;
@@ -1069,7 +1074,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.13";
+let appVersionText = "v0.1.14";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
