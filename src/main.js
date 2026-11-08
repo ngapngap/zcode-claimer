@@ -9,7 +9,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 //    Không dùng webview nhúng trong app (mở trình duyệt ngoài).
 // 1) Bảng tài khoản: mỗi dòng 1 tài khoản, quota tự tải cho mọi tài khoản khi mở
 //    app — không cần bấm vào từng tài khoản để xem.
-// 2) Claim per-account: nút "Lãnh gói" trên dòng -> dialog preview -> captcha slider
+// 2) Claim per-account: nút "Nhận gói" trên dòng -> dialog preview -> captcha slider
 //    -> claim (ui/aliyun-captcha.js solve()).
 // 3) Export: nút "Export JSON router" trên topbar -> export tất cả tài khoản có
 //    JWT thành 1 file JSON (mảng provider_conns) để import router.
@@ -65,12 +65,35 @@ document.addEventListener("click", (e) => {
   btn.appendChild(s);
   setTimeout(() => s.remove(), 600);
 });
+
+// ── Magnetic UI (bản B, libraries.dev): nút primary dịch nhẹ theo con trỏ ──
+// Tối đa 3px, chỉ khi user không bật prefers-reduced-motion. Dùng delegate
+// nên nút tạo động (Nhận gói, Xem điểm...) cũng có hiệu ứng.
+if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  document.addEventListener("mousemove", (e) => {
+    const btn = e.target.closest?.("button.primary");
+    if (!btn || btn.disabled) return;
+    const r = btn.getBoundingClientRect();
+    const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+    const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+    btn.style.transform = `translate(${(dx * 3).toFixed(1)}px,${(dy * 2).toFixed(1)}px)`;
+  });
+  document.addEventListener("mouseout", (e) => {
+    const btn = e.target.closest?.("button.primary");
+    if (btn) btn.style.transform = "";
+  });
+}
 function setStep(n) {
   document.querySelectorAll(".step").forEach((s) => {
     const num = Number(s.dataset.step);
     s.classList.toggle("is-active", num === n);
+    s.classList.toggle("is-done", num < n);
     const state = s.querySelector(".step-state");
     if (state) state.textContent = num < n ? "✓" : String(num);
+  });
+  // Vạch nối giữa các bước: xong khi bước trước nó đã xong.
+  document.querySelectorAll(".step-sep").forEach((sep, i) => {
+    sep.classList.toggle("done", n > i + 1);
   });
 }
 
@@ -226,32 +249,26 @@ function fmtTime(sec) {
   try { return new Date(sec * 1000).toLocaleString("vi-VN"); } catch { return ""; }
 }
 
-// ── Cột Quota: pill xám, trên là tên gói + còn/tổng (xanh),
-// dưới là thanh bar mỏng = tỉ lệ còn lại. Hover vào pill hiện popover chi tiết. ──
-function primaryBucket(r) {
-  const bs = (r.balances || []).filter((b) => b);
-  if (!bs.length) return null;
-  const withLeft = bs.filter((b) => Number(b.remaining_units) > 0);
-  const pool = withLeft.length ? withLeft : bs;
-  return pool.reduce((m, b) => ((Number(b.total_units) || 0) > (Number(m.total_units) || 0) ? b : m));
-}
-
+// ── Cột Quota: hiện LUÔN tất cả bucket, mỗi bucket 1 dòng (tên + còn/tổng + bar mỏng).
+// Không còn popover hover — mọi thông tin đã nằm ngay trong ô. ──
 function usageCell(a) {
   if (usageLoading.has(a.user_id)) return '<span class="usage-cell muted">Đang tải quota...</span>';
   const r = usageCache.get(a.user_id);
   if (!r) return '<span class="usage-cell muted">Chưa có dữ liệu</span>';
   if (r.error) return `<span class="usage-cell err" title="${esc(r.error)}">Lỗi số dư</span>`;
   if (!r.has_quota) return '<span class="usage-cell muted">Không có hạn mức</span>';
-  const b = primaryBucket(r);
-  const remaining = b ? Number(b.remaining_units) : Number(r.total_remaining);
-  const total = b ? Number(b.total_units) : Number(r.total_granted);
-  const name = b ? (b.show_name || b.meter || b.bucket_id || "") : "Tổng";
-  const pctLeft = total > 0 ? Math.max(0, Math.min(100, Math.round(remaining / total * 100))) : 0;
-  const barCls = pctLeft < 10 ? "low" : "";
-  return `<span class="balance-pill" data-balance-acct="${esc(a.user_id)}" tabindex="0">
-    <span class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums">${fmtUnits(remaining)} / ${fmtUnits(total)} token</span></span>
-    <span class="bp-bar"><span class="bp-fill ${barCls}" style="width:${pctLeft}%"></span></span>
-  </span>`;
+  const bs = (r.balances || []).filter((b) => b);
+  if (!bs.length) return '<span class="usage-cell muted">Không có hạn mức</span>';
+  const lines = bs.map((b) => {
+    const remaining = Number(b.remaining_units) || 0;
+    const total = Number(b.total_units) || 0;
+    const name = b.show_name || b.meter || b.bucket_id || "";
+    const pctLeft = total > 0 ? Math.max(0, Math.min(100, Math.round(remaining / total * 100))) : 0;
+    const barCls = pctLeft < 10 ? "low" : "";
+    const numsCls = remaining <= 0 ? "zero" : "";
+    return `<div class="usage-line"><div class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums ${numsCls}">${fmtUnits(remaining)} / ${fmtUnits(total)} token</span></div><span class="bp-bar"><span class="bp-fill ${barCls}" style="width:${pctLeft}%"></span></span></div>`;
+  }).join("");
+  return `<div class="usage-lines">${lines}</div>`;
 }
 
 function expiryCell(a) {
@@ -277,63 +294,45 @@ function expiryCell(a) {
 }
 
 function renderSummary() {
-  const el = $("accountsSummary");
-  if (!el) return;
   const zcodeAccts = accountsCache.filter((a) => a.type !== "autoclaw");
+  const acAccts = accountsCache.filter((a) => a.type === "autoclaw");
   const loaded = [...usageCache.values()].filter((r) => r && !r.error);
   const totalLeft = loaded.reduce((s, r) => s + (Number(r.total_remaining) || 0), 0);
-  let text = `ZCode · ${zcodeAccts.length} tài khoản · Tổng còn ${fmtUnits(totalLeft)} token`;
-  const acPoints = accountsCache
-    .filter((a) => a.type === "autoclaw")
+  const totalGranted = loaded.reduce((s, r) => s + (Number(r.total_granted) || 0), 0);
+  const acPoints = acAccts
     .map((a) => pointsCache.get(a.user_id))
     .filter((r) => r && !r.error && Number.isFinite(Number(r.available)))
     .reduce((s, r) => s + Number(r.available), 0);
-  if (acPoints > 0) text += ` · AutoClaw: ${fmtNum(acPoints)} điểm`;
-  el.textContent = text;
+  // Dòng tóm tắt dưới tiêu đề thẻ (giữ nguyên như cũ).
+  const el = $("accountsSummary");
+  if (el) {
+    let text = `ZCode · ${zcodeAccts.length} tài khoản · Tổng còn ${fmtUnits(totalLeft)} token`;
+    if (acPoints > 0) text += ` · AutoClaw: ${fmtNum(acPoints)} điểm`;
+    el.textContent = text;
+  }
+  // Stat strip (bố cục mới): nối cùng các tổng trên, không tính lại.
+  const set = (id, v) => { const n = $(id); if (n) n.textContent = v; };
+  set("statAccounts", String(accountsCache.length));
+  set("statAccountsSub", `${zcodeAccts.length} ZCode · ${acAccts.length} AutoClaw`);
+  set("statTokens", fmtUnits(totalLeft));
+  set("statTokensSub", `ZCode · tổng còn / ${fmtUnits(totalGranted)}`);
+  set("statPoints", acAccts.length ? fmtNum(acPoints) : "—");
+  set("statPointsSub", acAccts.length ? "Điểm tặng · Điểm gói" : "Chưa có tài khoản AutoClaw");
 }
-
-// Popover chi tiết quota khi hover vào pill (plan/status/expires,
-// tổng còn lại, rồi từng bucket với bar riêng).
-function balancePopHtml(a, r) {
-  const b = primaryBucket(r);
-  const totalLeft = Number(r.total_remaining) || 0;
-  const plan = (r.plans || [])[0];
-  const exp = b ? (b.expires_at || b.period_end) : (plan?.ends_at || null);
-  const status = plan ? (plan.status === "active" ? "Đang hiệu lực" : plan.status === "pending" ? "Chờ hiệu lực" : plan.status) : "";
-  const head = `<div class="bpp-head">Gói ${esc(b ? (b.show_name || b.meter || b.bucket_id || "") : (plan?.name || ""))}${status ? ` · ${esc(status)}` : ""}${exp ? ` · Hết hạn ${esc(fmtTime(exp))}` : ""}</div>`;
-  const total = `<div class="bpp-row"><span class="muted">Tổng còn lại</span><span class="bpp-total">${fmtUnits(totalLeft)} token</span></div>`;
-  const buckets = (r.balances || []).map((bk) => {
-    const rem = Number(bk.remaining_units) || 0, tot = Number(bk.total_units) || 0;
-    const pct = tot > 0 ? Math.max(0, Math.min(100, Math.round(rem / tot * 100))) : 0;
-    return `<div class="bpp-bucket"><div class="bpp-brow"><span>${esc(bk.show_name || bk.meter || bk.bucket_id || "")}</span><span>${fmtUnits(rem)} / ${fmtUnits(tot)} token</span></div><span class="bp-bar"><span class="bp-fill" style="width:${pct}%"></span></span></div>`;
-  }).join("");
-  const plans = (r.plans || []).map((p) => {
-    const st = p.status === "active" ? "Đang hiệu lực" : p.status === "pending" ? "Chờ hiệu lực" : (p.status || "");
-    const pendingTxt = p.has_pending && p.pending_until ? " · Hiệu lực " + esc(fmtTime(p.pending_until)) : "";
-    return `<div class="bpp-plan"><span>${esc(p.name || p.plan_id)}</span><span class="meta">${esc(st)}${pendingTxt}${p.ends_at ? " · đến " + esc(fmtTime(p.ends_at)) : ""}</span></div>`;
-  }).join("");
-  return `${head}${total}${buckets ? `<div class="bpp-title">Chi tiết</div>${buckets}` : ""}${plans ? `<div class="bpp-title">Gói</div>${plans}` : ""}`;
-}
-function showBalancePop(anchor, userId) {
-  const pop = $("balancePop");
-  const a = accountsCache.find((x) => x.user_id === userId);
-  const r = usageCache.get(userId);
-  if (!pop || !a || !r || r.error) return;
-  pop.innerHTML = balancePopHtml(a, r);
-  pop.hidden = false;
-  const rc = anchor.getBoundingClientRect();
-  const pw = pop.offsetWidth, ph = pop.offsetHeight;
-  let left = Math.max(8, Math.min(window.innerWidth - pw - 8, rc.left));
-  let top = rc.bottom + 6;
-  if (top + ph > window.innerHeight - 8) top = Math.max(8, rc.top - ph - 6);
-  pop.style.left = left + "px";
-  pop.style.top = top + "px";
-}
-function hideBalancePop() { const pop = $("balancePop"); if (pop) pop.hidden = true; }
 
 function statusCell(a) {
+  // Trạng thái đợt "Nhận tất cả" (nếu có): ưu tiên hiện trạng thái đợt
+  // thay cho trạng thái quota thường, cho tới khi làm mới lại.
+  const bc = batchClaim.get(a.user_id);
+  if (bc) {
+    if (bc.kind === "running") return '<span class="tag unknown">Đang nhận...</span>';
+    if (bc.kind === "done") return `<span class="tag active" title="${esc(bc.planId || "")}">Đã nhận</span>`;
+    if (bc.kind === "error") return `<span class="tag expired">Lỗi nhận</span><div class="meta" style="color:#b91c1c">${esc(bc.text)}</div>`;
+    if (bc.kind === "skipped") return `<span class="tag unknown" title="${esc(bc.text)}">Đã bỏ qua</span>`;
+  }
   if (a.type === "autoclaw") {
     const r = pointsCache.get(a.user_id);
+    if (r?.expired) return '<span class="tag expired" title="Token đã hết hạn — đăng nhập lại AutoClaw">Hết hạn đăng nhập</span>';
     if (r?.error) return '<span class="tag expired">Lỗi số dư</span>';
     if (r?.loading) return '<span class="tag unknown">Đang tải...</span>';
     if (r) return '<span class="tag active">Sẵn sàng</span>';
@@ -350,7 +349,7 @@ function statusCell(a) {
 
 function actionsCell(a) {
   if (a.type === "autoclaw") {
-    // AutoClaw không có JWT ZCode nên không Lãnh gói. Sửa email được
+    // AutoClaw không có JWT ZCode nên không Nhận gói. Sửa email được
     // (lưu vào autoclaw-accounts.json, không chạm accounts.json ZCode).
     const viewBtn = `<button class="primary small" data-points-acct="${esc(a.user_id)}" type="button" title="Tải lại số điểm AutoClaw">Xem điểm</button>`;
     const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Sửa email hiển thị">Sửa email</button>`;
@@ -359,8 +358,8 @@ function actionsCell(a) {
   }
   const hasJwt = !!(a.jwt && String(a.jwt).trim());
   const claimBtn = hasJwt
-    ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể lãnh của tài khoản này">Lãnh gói</button>`
-    : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Lãnh gói</button>`;
+    ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể nhận của tài khoản này"${batchRunning ? " disabled" : ""}>Nhận gói</button>`
+    : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Nhận gói</button>`;
   const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Nhập/sửa email đăng nhập của tài khoản này (để nhận biết tài khoản, dùng khi export)">Sửa email</button>`;
   const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản này khỏi danh sách đã lưu (JWT sẽ mất, muốn dùng lại phải đăng nhập lại)">Xóa</button>`;
   return `<span class="actions-cell">${claimBtn} ${editBtn} ${deleteBtn}</span>`;
@@ -488,22 +487,6 @@ function renderAccountsTable() {
   });
 }
 
-// Hover pill quota -> popover chi tiết (delegate, vì bảng render lại bằng innerHTML)
-$("accountsList").addEventListener("mouseover", (e) => {
-  const pill = e.target.closest(".balance-pill");
-  if (pill) showBalancePop(pill, pill.dataset.balanceAcct);
-});
-$("accountsList").addEventListener("mouseout", (e) => {
-  const pill = e.target.closest(".balance-pill");
-  const pop = $("balancePop");
-  if (pill && pop && !pop.contains(e.relatedTarget) && !pill.contains(e.relatedTarget)) hideBalancePop();
-});
-$("balancePop").addEventListener("mouseleave", hideBalancePop);
-document.addEventListener("click", (e) => {
-  const pop = $("balancePop");
-  if (pop && !pop.hidden && !e.target.closest(".balance-pill") && !pop.contains(e.target)) hideBalancePop();
-});
-
 async function queryUsageOnce(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
   if (!a || !a.jwt) return;
@@ -527,7 +510,7 @@ async function queryUsageOnce(userId) {
   }
 }
 
-// ── Dialog Lãnh gói per-account (ActionsCell → openZcodePlans → wbZcodeClaim) ──
+// ── Dialog Nhận gói per-account (ActionsCell → openZcodePlans → wbZcodeClaim) ──
 async function openPlansForAccount(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
   if (!a) return;
@@ -560,7 +543,7 @@ function openPlansDialog(a) {
       let dialogPlanId = null;
       $("plansDialogBody").innerHTML = plans.map((p) =>
         `<div class="plan-item" data-dialog-id="${esc(p.plan_id)}"><span><b>${esc(p.name)}</b> — ${esc(p.plan_id)}<br><span style="font-size:12px;color:#6e6e73">${esc(p.description || "")}</span></span><span>${p.entitlements?.[0] ? fmtUnits(p.entitlements[0].grant_units) + " " + esc(p.entitlements[0].unit_type || "") : ""}</span></div>`
-      ).join("") + `<div class="btn-row"><button id="btnDialogCaptcha" class="secondary" type="button">Làm captcha (slider)</button><button id="btnDialogClaim" class="primary" type="button" disabled>Lãnh gói</button></div>`;
+      ).join("") + `<div class="btn-row"><button id="btnDialogCaptcha" class="secondary" type="button">Làm captcha (slider)</button><button id="btnDialogClaim" class="primary" type="button" disabled>Nhận gói</button></div>`;
       dlg.querySelectorAll(".plan-item").forEach((el) => {
         el.onclick = () => {
           dlg.querySelectorAll(".plan-item").forEach((x) => x.classList.remove("selected"));
@@ -573,7 +556,7 @@ function openPlansDialog(a) {
         if (!dialogPlanId) { $("plansDialogResult").textContent = "Chưa chọn gói"; return; }
         let config;
         try { config = await invoke("get_captcha_config"); } catch (e) { $("plansDialogResult").textContent = "Lấy cấu hình captcha lỗi: " + e; return; }
-        if (!config || !config.enabled) { $("plansDialogResult").textContent = "Upstream nói không cần mã xác thực — bấm Lãnh luôn"; $("btnDialogClaim").disabled = false; return; }
+        if (!config || !config.enabled) { $("plansDialogResult").textContent = "Upstream nói không cần mã xác thực — bấm Nhận luôn"; $("btnDialogClaim").disabled = false; return; }
         $("plansDialogResult").textContent = "Kéo slider để hoàn thành captcha...";
         try {
           await window.wbAliyunCaptcha.solve(
@@ -581,7 +564,7 @@ function openPlansDialog(a) {
             async (verifyParam) => {
               captchaVerifyParam = verifyParam;
               captchaRegion = config.region;
-              $("plansDialogResult").textContent = "Captcha OK — bấm Lãnh gói";
+              $("plansDialogResult").textContent = "Captcha OK — bấm Nhận gói";
               $("btnDialogClaim").disabled = false;
               return { captchaResult: true, bizResult: true };
             }
@@ -593,11 +576,11 @@ function openPlansDialog(a) {
       };
       $("btnDialogClaim").onclick = async () => {
         if (!dialogPlanId) { $("plansDialogResult").textContent = "Chưa chọn gói"; return; }
-        $("plansDialogResult").textContent = "Đang lãnh...";
+        $("plansDialogResult").textContent = "Đang nhận...";
         try {
           const result = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, planId: dialogPlanId, captchaVerifyParam, captchaRegion });
           if (result?.Claimed) {
-            $("plansDialogResult").textContent = "Đã lãnh: " + result.Claimed.plan_id;
+            $("plansDialogResult").textContent = "Đã nhận: " + result.Claimed.plan_id;
             setStep(3);
             try { await invoke("record_claim_history", { planId: result.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
             queryUsageOnce(userId);
@@ -652,13 +635,124 @@ function retryHint(code, failureEndsAt) {
     const when = failureEndsAt ? ` (đến ${fmtTime(failureEndsAt)})` : "";
     return { cls: "warn", text: `Hạn mức hôm nay đã hết (1005). Hãy chờ tới${when} rồi claim lại.` };
   }
-  if (code === 3007) return { cls: "warn", text: "Captcha chưa đạt (3007). Hãy làm lại slider rồi bấm Lãnh gói." };
+  if (code === 3007) return { cls: "warn", text: "Captcha chưa đạt (3007). Hãy làm lại slider rồi bấm Nhận gói." };
   if (code === 401) return { cls: "err", text: "Phiên đăng nhập đã hết hạn (401). Hãy đăng nhập lại lấy JWT mới." };
   if (code === 1003) return { cls: "ok", text: "Tài khoản này đã nhận gói hôm nay (1003)." };
   return null;
 }
 
+// ── Nhận tất cả: nhận lần lượt từng tài khoản ZCode, tuần tự ──
+// Dùng đúng luồng nhận theo dòng (preview → captcha Aliyun → claim →
+// làm mới quota) như dialog Nhận gói (openPlansDialog), chỉ khác:
+// không mở dialog, gói lấy gói đầu tiên trong preview, captcha giải inline.
+// Dòng AutoClaw không có gói nên không nhận; dòng không JWT hoặc đã hết
+// hạn mức thì bỏ qua (không gọi API). Lỗi 1 dòng không dừng cả đợt.
+// Chế độ demo (?demo=1): mô phỏng thành công sau 1 nhịp chờ để kiểm tra
+// được bằng trình duyệt (không có Tauri, không gọi API thật).
+function isDemoMode() { return new URLSearchParams(location.search).has("demo"); }
+const batchClaim = new Map(); // user_id -> { kind: running|done|error|skipped, text?, planId? }
+let batchRunning = false;
+
+async function claimAccountOnce(a) {
+  if (isDemoMode()) {
+    await new Promise((r) => setTimeout(r, 600));
+    setStep(3);
+    return { planId: "zcode-v3-start-plan-0817", demo: true };
+  }
+  const mid = (a.device_mid || "").trim() || await ensureMid();
+  const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid });
+  if (result?.NotDeployed) throw new Error("Hoạt động chưa ra mắt (404) — chờ mở bán");
+  const plans = result?.Plans || [];
+  if (!plans.length) throw new Error("Không có gói nào hôm nay");
+  const plan = plans[0];
+  let config;
+  try { config = await invoke("get_captcha_config"); } catch (e) { throw new Error("Lấy cấu hình captcha lỗi: " + e); }
+  if (config && config.enabled) {
+    try {
+      await window.wbAliyunCaptcha.solve(
+        { region: config.region, prefix: config.prefix, sceneId: config.scene_id },
+        async (verifyParam) => {
+          captchaVerifyParam = verifyParam;
+          captchaRegion = config.region;
+          return { captchaResult: true, bizResult: true };
+        }
+      );
+    } catch (e) {
+      if (e?.name === "CaptchaCancelledError") throw new Error("Đã hủy captcha");
+      throw new Error("Lỗi captcha: " + (e?.message || e));
+    }
+  }
+  const res = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, planId: plan.plan_id, captchaVerifyParam, captchaRegion });
+  if (res?.Claimed) {
+    try { await invoke("record_claim_history", { planId: res.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
+    setStep(3);
+    await queryUsageOnce(a.user_id);
+    return { planId: res.Claimed.plan_id };
+  }
+  if (res?.Failed) {
+    const hint = retryHint(res.Failed.code, res.Failed.failure_ends_at);
+    try { await invoke("record_claim_history", { planId: plan.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "failed", code: res.Failed.code, message: res.Failed.message || "", failureEndsAt: res.Failed.failure_ends_at ?? null }); } catch {}
+    await queryUsageOnce(a.user_id);
+    throw new Error(`Lỗi: ${res.Failed.failure}: ${res.Failed.message} (code ${res.Failed.code})` + (hint ? ` — ${hint.text}` : ""));
+  }
+  throw new Error("Kết quả nhận gói không rõ: " + JSON.stringify(res));
+}
+
+async function claimAll() {
+  if (batchRunning) return;
+  const zcodeAccts = accountsCache.filter((a) => a.type !== "autoclaw");
+  const st = $("loginStatus");
+  if (!zcodeAccts.length) {
+    if (st) st.textContent = "Chưa có tài khoản ZCode nào để nhận.";
+    return;
+  }
+  // Đóng dialog Nhận gói nếu đang mở để 2 luồng không nhận chồng nhau.
+  const dlg = $("plansDialog");
+  if (dlg) dlg.hidden = true;
+  batchRunning = true;
+  batchClaim.clear();
+  $("btnClaimAll").disabled = true;
+  renderAccountsTable();
+  let ok = 0, fail = 0, skipped = 0;
+  for (const a of zcodeAccts) {
+    const r = usageCache.get(a.user_id);
+    if (!a.jwt || !String(a.jwt).trim()) {
+      batchClaim.set(a.user_id, { kind: "skipped", text: "Chưa có JWT — cần đăng nhập trước" });
+      skipped++;
+      renderAccountsTable();
+      continue;
+    }
+    if (r && r.has_quota === false) {
+      batchClaim.set(a.user_id, { kind: "skipped", text: "Hết hạn mức" });
+      skipped++;
+      renderAccountsTable();
+      continue;
+    }
+    batchClaim.set(a.user_id, { kind: "running", text: "Đang nhận..." });
+    renderAccountsTable();
+    try {
+      const res = await claimAccountOnce(a);
+      batchClaim.set(a.user_id, { kind: "done", text: "Đã nhận", planId: res.planId });
+      ok++;
+    } catch (e) {
+      batchClaim.set(a.user_id, { kind: "error", text: String(e?.message || e) });
+      fail++;
+    }
+    renderAccountsTable();
+  }
+  batchRunning = false;
+  $("btnClaimAll").disabled = false;
+  renderAccountsTable();
+  const parts = [];
+  if (fail) parts.push(`${fail} lỗi`);
+  if (skipped) parts.push(`${skipped} bỏ qua`);
+  if (st) st.textContent = `Đã nhận ${ok}/${zcodeAccts.length} tài khoản` + (parts.length ? ` (${parts.join(", ")})` : "");
+}
+
+$("btnClaimAll").onclick = () => { claimAll(); };
+
 $("btnRefreshAll")?.addEventListener("click", async () => {
+  batchClaim.clear();
   for (const a of accountsCache) {
     if (a.type === "autoclaw") await queryPointsOnce(a.user_id);
     else if (a.jwt) await queryUsageOnce(a.user_id);
@@ -686,6 +780,16 @@ function acRawId(userId) { return String(userId || "").replace(/^autoclaw:/, "")
 async function queryPointsOnce(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
   if (!a || a.type !== "autoclaw") return;
+  // Token đã hết hạn thì không gọi API nữa (tránh lỗi chung "Lỗi số dư"):
+  // expires_at lưu theo ms (Rust: exp * 1000); null/không phải số = chưa
+  // biết hạn, cứ gọi như cũ. Backend không tự refresh token nên chặn ở đây
+  // không làm mất đường refresh nào.
+  const expMs = Number(a.autoclaw_expires_at);
+  if (Number.isFinite(expMs) && Date.now() > expMs) {
+    pointsCache.set(userId, { expired: true });
+    renderAccountsTable();
+    return;
+  }
   pointsCache.set(userId, { loading: true });
   renderAccountsTable();
   try {
@@ -730,7 +834,7 @@ async function upsertAutoclawAccount(creds) {
 // Đăng nhập AutoClaw Quốc tế (OAuth Zai):
 // captcha -> lấy auth URL -> mở trình duyệt -> poll chờ callback.
 async function loginAutoclaw() {
-  if (autoclawLoginTimer) { clearInterval(autoclawLoginTimer); autoclawLoginTimer = null; }
+  if (autoclawLoginTimer) { clearTimeout(autoclawLoginTimer); autoclawLoginTimer = null; }
   if (autoclawLoginFlowId) {
     try { await invoke("cancel_autoclaw_oauth", { flowId: autoclawLoginFlowId }); } catch {}
     autoclawLoginFlowId = null;
@@ -751,24 +855,41 @@ async function loginAutoclaw() {
     return;
   }
   $("loginStatus").textContent = "Kéo slider để hoàn thành captcha...";
+  // Lỗi ở bước start_oauth (vd hết cổng callback) phải hiện đúng tên của nó,
+  // không gắn nhãn "Lỗi captcha" — nên bắt riêng trong callback, ghi vào
+  // startError rồi báo sau khi solve xong (solve có bọc lại lỗi thì cờ này
+  // vẫn còn, không bị mất).
+  let startError = null;
   try {
     await window.wbAliyunCaptcha.solve(
       { region: config.region, prefix: config.prefix, sceneId: config.sceneId },
       async (verifyParam) => {
-        const start = await invoke("start_autoclaw_oauth", { vendor: "zai", captchaVerifyParam: verifyParam });
-        autoclawLoginFlowId = start.flow_id;
         try {
-          await openUrl(start.auth_url);
+          const start = await invoke("start_autoclaw_oauth", { vendor: "zai", captchaVerifyParam: verifyParam });
+          autoclawLoginFlowId = start.flow_id;
+          try {
+            await openUrl(start.auth_url);
+          } catch (e) {
+            $("loginStatus").textContent = "Mở trình duyệt thất bại: " + e + " — hãy copy địa chỉ này mở tay: " + start.auth_url;
+          }
+          $("loginStatus").textContent = "Đã mở trình duyệt — hãy đăng nhập Zai trên web AutoClaw, rồi quay lại app. Đang chờ xác thực...";
         } catch (e) {
-          $("loginStatus").textContent = "Mở trình duyệt thất bại: " + e + " — hãy copy địa chỉ này mở tay: " + start.auth_url;
+          startError = e;
         }
-        $("loginStatus").textContent = "Đã mở trình duyệt — hãy đăng nhập Zai trên web AutoClaw, rồi quay lại app. Đang chờ xác thực...";
         return { captchaResult: true, bizResult: true };
       }
     );
   } catch (e) {
+    if (startError) {
+      $("loginStatus").textContent = "Lỗi khởi tạo đăng nhập AutoClaw: " + (startError?.message || startError);
+      return;
+    }
     if (e?.name === "CaptchaCancelledError") { $("loginStatus").textContent = "Đã hủy captcha"; return; }
     $("loginStatus").textContent = "Lỗi captcha: " + (e?.message || e);
+    return;
+  }
+  if (startError) {
+    $("loginStatus").textContent = "Lỗi khởi tạo đăng nhập AutoClaw: " + (startError?.message || startError);
     return;
   }
   if (!autoclawLoginFlowId) {
@@ -777,10 +898,15 @@ async function loginAutoclaw() {
   }
   const flowId = autoclawLoginFlowId;
   const deadline = Date.now() + 5 * 60 * 1000;
-  autoclawLoginTimer = setInterval(async () => {
+  // Poll nối tiếp bằng setTimeout (không dùng setInterval + async để các
+  // tick không chồng nhau: tick sau chỉ chạy khi tick trước đã xong, nên
+  // không có tick muộn nào ghi đè "Đăng nhập thành công".
+  let pollDone = false;
+  const stopPoll = () => { if (autoclawLoginTimer) { clearTimeout(autoclawLoginTimer); autoclawLoginTimer = null; } };
+  const tick = async () => {
+    if (pollDone) return;
     if (Date.now() > deadline) {
-      clearInterval(autoclawLoginTimer);
-      autoclawLoginTimer = null;
+      pollDone = true; stopPoll();
       try { await invoke("cancel_autoclaw_oauth", { flowId }); } catch {}
       autoclawLoginFlowId = null;
       $("loginStatus").textContent = "Hết hạn đăng nhập AutoClaw (5 phút). Bấm Đăng nhập lại.";
@@ -790,18 +916,19 @@ async function loginAutoclaw() {
     try {
       res = await invoke("poll_autoclaw_oauth", { flowId });
     } catch (e) {
-      clearInterval(autoclawLoginTimer);
-      autoclawLoginTimer = null;
+      if (pollDone) return;
+      pollDone = true; stopPoll();
       autoclawLoginFlowId = null;
       $("loginStatus").textContent = "Đăng nhập AutoClaw thất bại: " + e;
       return;
     }
+    if (pollDone) return;
     if (res?.status === "pending") {
       if (res.hint) $("loginStatus").textContent = res.hint;
+      autoclawLoginTimer = setTimeout(tick, 1000);
       return;
     }
-    clearInterval(autoclawLoginTimer);
-    autoclawLoginTimer = null;
+    pollDone = true; stopPoll();
     autoclawLoginFlowId = null;
     if (res?.status === "ready" && res?.credentials) {
       const a = await upsertAutoclawAccount(res.credentials);
@@ -809,7 +936,8 @@ async function loginAutoclaw() {
     } else {
       $("loginStatus").textContent = "Đăng nhập AutoClaw thất bại: " + (res?.message || JSON.stringify(res));
     }
-  }, 1000);
+  };
+  autoclawLoginTimer = setTimeout(tick, 1000);
 }
 // Đường cũ: đọc login AutoClaw desktop local rồi thêm 1 dòng (chỉ trong phiên).
 // Dùng khi upstream nói không cần captcha, hoặc làm fallback.
@@ -861,13 +989,19 @@ function pointsCell(a) {
   const r = pointsCache.get(a.user_id);
   if (r?.loading) return '<span class="usage-cell muted">Đang tải điểm...</span>';
   if (!r) return '<span class="usage-cell muted">Chưa xem điểm</span>';
+  if (r.expired) return '<span class="usage-cell err" title="Token đã hết hạn — đăng nhập lại AutoClaw để xem điểm">Hết hạn đăng nhập — đăng nhập lại</span>';
   if (r.error) return `<span class="usage-cell err" title="${esc(r.error)}">Lỗi số dư</span>`;
   const avail = Number(r.available);
   const wallets = Array.isArray(r.wallets) ? r.wallets : [];
-  const names = wallets.slice(0, 2).map((w) => w.show_name || w.bucket_id || "Điểm").join(" · ");
-  return `<span class="balance-pill" title="${esc(wallets.map((w) => `${w.show_name || w.bucket_id || "Điểm"}: ${fmtNum(w.remaining_points)} điểm`).join("\n") || "AutoClaw")}">
-    <span class="bp-top"><span class="bp-name">${esc(names || "Điểm")}</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></span>
-  </span>`;
+  if (!wallets.length) {
+    return `<div class="usage-lines"><div class="usage-line"><div class="bp-top"><span class="bp-name">Điểm</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></div></div></div>`;
+  }
+  const lines = wallets.map((w) => {
+    const name = w.show_name || w.bucket_id || "Điểm";
+    const pts = Number(w.remaining_points) || 0;
+    return `<div class="usage-line"><div class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums">${fmtNum(pts)} điểm</span></div></div>`;
+  }).join("");
+  return `<div class="usage-lines">${lines}</div>`;
 }
 
 // ── Persistence Rust thay localStorage JWT ──
@@ -892,7 +1026,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.11";
+let appVersionText = "v0.1.12";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
@@ -971,10 +1105,11 @@ function seedDemo() {
     raw: {}, user_id: "demo", email: "demo-autoclaw@example.com",
   });
   usageCache.set(accountsCache[0].user_id, {
-    total_remaining: 3000000, total_used: 2000000, total_granted: 5000000, has_quota: true,
+    total_remaining: 422000000, total_used: 86000000, total_granted: 508000000, has_quota: true,
     balances: [
       { show_name: "GLM-5.3", meter: "tokens", unit_type: "tokens", total_units: 3000000, used_units: 0, remaining_units: 3000000, period_end: now + 86400 * 7, expires_at: now + 86400 * 30 },
-      { show_name: "GLM-5.3-Flash", meter: "tokens", unit_type: "tokens", total_units: 500000000, used_units: 500000000, remaining_units: 0, period_end: now + 86400 * 3, expires_at: now + 86400 * 10 },
+      { show_name: "GLM-5.3-Flash", meter: "tokens", unit_type: "tokens", total_units: 5000000, used_units: 0, remaining_units: 5000000, period_end: now + 86400 * 7, expires_at: now + 86400 * 30 },
+      { show_name: "ZCODE WEEKEND BUILD", meter: "tokens", unit_type: "tokens", total_units: 500000000, used_units: 86000000, remaining_units: 414000000, period_end: now + 86400 * 2, expires_at: now + 86400 * 2 },
     ],
     plans: [
       { plan_id: "zcode-v3-start-plan-0817", name: "ZCode Start Plan", status: "active", ends_at: now + 86400 * 7, has_pending: false, pending_until: null },
@@ -998,10 +1133,13 @@ function seedDemo() {
 }
 
 // Khởi tạo: nạp config đã lưu từ Rust persistence khi mở app
-isTauri().then(() => {
+// Nạp tuần tự (await): loadAccounts() ghi đè toàn bộ accountsCache, nên
+// phải đợi nó xong rồi mới nạp dòng AutoClaw — nạp song song thì
+// list_accounts về sau sẽ xóa mất các dòng AutoClaw vừa thêm.
+isTauri().then(async () => {
   if (new URLSearchParams(location.search).has("demo")) { seedDemo(); return; }
-  loadAccounts();
-  loadAutoclawAccounts();
+  await loadAccounts();
+  await loadAutoclawAccounts();
   // Auto-check update khi mở app (silent, không popup dialog — dialog:false trong tauri.conf.json)
   checkForUpdates(false);
 });

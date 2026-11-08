@@ -292,6 +292,9 @@ async fn exchange_code(
             expires_at = Some(exp * 1000.0);
         }
     }
+    if user_id.is_empty() {
+        return Err("Dang nhap xong nhung upstream khong tra ve user_id (data.user_id va JWT deu trong)".to_string());
+    }
     let refresh_token = data
         .get("refresh_token")
         .and_then(Value::as_str)

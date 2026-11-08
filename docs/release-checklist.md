@@ -3,6 +3,24 @@
 Box Linux không có Rust toolchain và không phải Windows, nên các mục sau
 **chưa kiểm chứng được tại đây** — phải chạy trên máy Windows 10/11.
 
+## Release nhanh bằng script (khuyến nghị)
+
+Trên máy Windows, tại thư mục gốc của repo:
+
+```powershell
+.\scripts\release.ps1 -Bump patch    # 0.1.11 -> 0.1.12
+.\scripts\release.ps1 -Version 0.2.0 # version cụ thể
+.\scripts\release.ps1 -Version 0.1.12 -DryRun  # chỉ xem các bước, không làm gì
+```
+
+Script tự làm: đổi version ở đúng 5 chỗ (package.json, src-tauri/Cargo.toml,
+src-tauri/tauri.conf.json, src/index.html, src/main.js — mỗi chỗ kiểm tra đúng
+1 lần khớp, sai thì dừng và hoàn tác) → chạy `pnpm run build` để kiểm tra
+frontend (bỏ qua với `-SkipBuild`) → commit + push lên main → gắn tag
+`v<version>` + push tag → workflow Build Windows x64 trên GitHub tự động build
+.msi/.exe, tạo GitHub Release và cập nhật `latest.json` cho updater trong app.
+Yêu cầu: đang ở branch main, cây git sạch, main đã pull mới nhất, tag chưa tồn tại.
+
 ## Môi trường cần có
 
 - Node 20+ (khuyến nghị 20 LTS trở lên)
