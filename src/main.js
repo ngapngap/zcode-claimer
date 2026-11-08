@@ -214,7 +214,8 @@ $("btnExportAll").onclick = async () => {
   for (const a of withAcToken) {
     try {
       const s = await invoke("export_router_json_autoclaw", {
-        token: a.autoclaw_token, userId: acRawId(a.user_id), username: a.username || "",
+        token: a.autoclaw_token, refreshToken: a.autoclaw_refresh_token || "",
+        userId: acRawId(a.user_id), username: a.username || "",
         email: a.email || "",
       });
       items.push(JSON.parse(s));
@@ -1146,7 +1147,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.15";
+let appVersionText = "v0.1.16";
 async function showAppVersion() {
   const el = $("appVersion");
   try {

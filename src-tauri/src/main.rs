@@ -259,9 +259,12 @@ fn export_router_json(
 // Entry router cho tài khoản AutoClaw: mirror đúng shape entry ZCode
 // (provider glm, authType oauth) nhưng dùng access token AutoClaw;
 // email/user_name để nhận biết (như entry ZCode dùng email).
+// Refresh token đi kèm để router tự làm mới access token khi hết hạn —
+// thiếu nó thì entry AutoClaw chết ngay khi access token hết hạn.
 #[tauri::command]
 fn export_router_json_autoclaw(
     token: String,
+    refresh_token: String,
     user_id: String,
     username: String,
     email: String,
@@ -280,7 +283,8 @@ fn export_router_json_autoclaw(
                 "authMethod": "autoclaw-oauth",
                 "username": username,
                 "userId": user_id,
-                "autoclawAccessToken": token
+                "autoclawAccessToken": token,
+                "autoclawRefreshToken": refresh_token
             },
             "testStatus": "active"
         }
