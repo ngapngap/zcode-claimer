@@ -231,6 +231,38 @@ fn export_router_json(
     serde_json::to_string_pretty(&json).unwrap_or_default()
 }
 
+// Entry router cho tài khoản AutoClaw: mirror đúng shape entry ZCode
+// (provider glm, authType oauth) nhưng dùng access token AutoClaw;
+// email/user_name để nhận biết (như entry ZCode dùng email).
+#[tauri::command]
+fn export_router_json_autoclaw(
+    token: String,
+    user_id: String,
+    username: String,
+    email: String,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let json = serde_json::json!({
+        "id": id,
+        "provider": "glm",
+        "authType": "oauth",
+        "name": "AutoClaw",
+        "email": email,
+        "priority": 100,
+        "isActive": true,
+        "data": {
+            "providerSpecificData": {
+                "authMethod": "autoclaw-oauth",
+                "username": username,
+                "userId": user_id,
+                "autoclawAccessToken": token
+            },
+            "testStatus": "active"
+        }
+    });
+    serde_json::to_string_pretty(&json).unwrap_or_default()
+}
+
 // ── Persistence commands (config + claim history trong app-data) ──
 
 #[tauri::command]
@@ -308,6 +340,7 @@ fn main() {
             report_activation,
             generate_device_mid,
             export_router_json,
+            export_router_json_autoclaw,
             query_balance,
             query_autoclaw_balance,
             autoclaw_oauth_captcha_config,

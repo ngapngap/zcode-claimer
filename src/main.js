@@ -11,8 +11,9 @@ import { save } from "@tauri-apps/plugin-dialog";
 //    app — không cần bấm vào từng tài khoản để xem.
 // 2) Claim per-account: nút "Nhận gói" trên dòng -> dialog preview -> captcha slider
 //    -> claim (ui/aliyun-captcha.js solve()).
-// 3) Export: nút "Export JSON router" trên topbar -> export tất cả tài khoản có
-//    JWT thành 1 file JSON (mảng provider_conns) để import router.
+// 3) Export: nút "Export JSON router" trên topbar -> export tất cả tài khoản
+//    (ZCode có JWT + AutoClaw có token) thành 1 file JSON (mảng provider_conns)
+//    để import router.
 
 const $ = (id) => document.getElementById(id);
 let captchaVerifyParam = "";
@@ -188,14 +189,17 @@ async function downloadExportFile(filename, contents) {
   }
 }
 
-// ── Export JSON router: 1 nút, export tất cả tài khoản có JWT thành 1 file ──
+// ── Export JSON router: 1 nút, export tất cả tài khoản (ZCode có JWT +
+// AutoClaw có token) thành 1 file ──
 $("btnExportAll").onclick = async () => {
   const withJwt = accountsCache.filter((a) => a.jwt && String(a.jwt).trim());
-  if (!withJwt.length) {
-    $("loginStatus").textContent = "Chưa có tài khoản nào có JWT để export — hãy đăng nhập trước.";
+  const withAcToken = accountsCache.filter((a) => a.type === "autoclaw" && a.autoclaw_token && String(a.autoclaw_token).trim());
+  const total = withJwt.length + withAcToken.length;
+  if (!total) {
+    $("loginStatus").textContent = "Chưa có tài khoản nào để export — hãy đăng nhập trước.";
     return;
   }
-  $("loginStatus").textContent = `Đang export ${withJwt.length} tài khoản...`;
+  $("loginStatus").textContent = `Đang export ${total} tài khoản...`;
   const items = [];
   let skipped = 0;
   for (const a of withJwt) {
@@ -203,6 +207,15 @@ $("btnExportAll").onclick = async () => {
       const s = await invoke("export_router_json", {
         jwt: a.jwt, userId: a.user_id, username: a.username || "",
         email: a.email || "", zaiBusinessToken: a.zai_business_token || "",
+      });
+      items.push(JSON.parse(s));
+    } catch { skipped++; }
+  }
+  for (const a of withAcToken) {
+    try {
+      const s = await invoke("export_router_json_autoclaw", {
+        token: a.autoclaw_token, userId: acRawId(a.user_id), username: a.username || "",
+        email: a.email || "",
       });
       items.push(JSON.parse(s));
     } catch { skipped++; }
@@ -217,7 +230,7 @@ $("btnExportAll").onclick = async () => {
     return;
   }
   const dest = res.path ? `→ ${res.path}` : "→ zcode-router-export.json (tải về thư mục mặc định)";
-  $("loginStatus").textContent = `Đã export ${items.length}/${withJwt.length} tài khoản ${dest}` + (skipped ? ` (${skipped} tài khoản lỗi, đã bỏ qua)` : "");
+  $("loginStatus").textContent = `Đã export ${items.length}/${total} tài khoản ${dest}` + (skipped ? ` (${skipped} tài khoản lỗi, đã bỏ qua)` : "");
 };
 
 // ── Bảng tài khoản per-account (UsageCell / ActionsCell) ──
@@ -985,6 +998,18 @@ async function loadAutoclawAccounts() {
     if (rawId) await queryPointsOnce("autoclaw:" + rawId);
   }
 }
+// Tên ví API Zai trả về tiếng Trung (vd "奖励积分") — dịch sang tiếng Việt khi
+// hiển thị. Tên nào không có trong bảng thì giữ nguyên (không làm mất dữ liệu).
+// Đường legacy đã dùng nhãn tiếng Việt sẵn (WALLET_SCOPE_LABELS bên Rust).
+const WALLET_NAME_VI = {
+  "奖励积分": "Điểm thưởng",
+  "套餐积分": "Điểm gói",
+  "赠送积分": "Điểm tặng",
+};
+function walletNameVi(name) {
+  const raw = String(name ?? "").trim();
+  return WALLET_NAME_VI[raw] || raw;
+}
 function pointsCell(a) {
   const r = pointsCache.get(a.user_id);
   if (r?.loading) return '<span class="usage-cell muted">Đang tải điểm...</span>';
@@ -997,7 +1022,7 @@ function pointsCell(a) {
     return `<div class="usage-lines"><div class="usage-line"><div class="bp-top"><span class="bp-name">Điểm</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></div></div></div>`;
   }
   const lines = wallets.map((w) => {
-    const name = w.show_name || w.bucket_id || "Điểm";
+    const name = walletNameVi(w.show_name || w.bucket_id) || "Điểm";
     const pts = Number(w.remaining_points) || 0;
     return `<div class="usage-line"><div class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums">${fmtNum(pts)} điểm</span></div></div>`;
   }).join("");
@@ -1091,7 +1116,7 @@ function seedDemo() {
     { user_id: "11111111-1111-4111-8111-111111111111", username: "demo-zcode-01", email: "demo01@example.com", device_mid: "22222222-2222-4222-8222-222222222222", jwt: "demo", zai_business_token: "" },
     { user_id: "33333333-3333-4333-8333-333333333333", username: "demo-zcode-02", email: "", device_mid: "44444444-4444-4444-8444-444444444444", jwt: "demo", zai_business_token: "" },
     { user_id: "55555555-5555-4555-8555-555555555555", username: "demo-zcode-03", email: "demo03@example.com", device_mid: "66666666-6666-4666-8666-666666666666", jwt: "demo", zai_business_token: "" },
-    { type: "autoclaw", user_id: "autoclaw:demo", username: "", email: "demo-autoclaw@example.com", device_mid: "", jwt: "", zai_business_token: "" },
+    { type: "autoclaw", user_id: "autoclaw:demo", username: "", email: "demo-autoclaw@example.com", device_mid: "", jwt: "", zai_business_token: "", autoclaw_token: "demo" },
   ];
   currentUserId = accountsCache[0].user_id;
   pointsCache.set("autoclaw:demo", {
