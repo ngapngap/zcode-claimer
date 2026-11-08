@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::autoclaw_credentials::AutoClawCredentials;
+use crate::autoclaw_crypto;
 
 pub const REQUEST_TIMEOUT_SECS: u64 = 20;
 const POINTS_WALLET_PATH: &str = "/agent-assetmgr/api/v2/wallets?biz_app_id=autoclaw";

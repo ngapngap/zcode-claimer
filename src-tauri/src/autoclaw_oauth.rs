@@ -61,7 +61,7 @@ const FLOW_PREFIX: &str = "autoclaw-oauth-";
 
 /// Base userapi Quoc te (Region::Intl). Chi Quoc te — khong co Cn o day.
 fn intl_base_url() -> String {
-    Region::Intl.userapi_base_url()
+    Region::Intl.userapi_base_url().to_string()
 }
 
 fn describe_oauth_error(code: i64, upstream_msg: &str) -> String {
