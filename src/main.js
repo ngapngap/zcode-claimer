@@ -382,10 +382,18 @@ function actionsCell(a) {
   if (a.type === "autoclaw") {
     // AutoClaw không có JWT ZCode nên không Nhận gói. Sửa email được
     // (lưu vào autoclaw-accounts.json, không chạm accounts.json ZCode).
+    // Điểm danh hàng ngày: task daily_signin (xem autoclaw_checkin.rs) —
+    // nút đổi trạng thái trong phiên sau khi nhận xong.
+    const ck = checkinState.get(a.user_id);
+    const checkinBtn = checkinRunning.has(a.user_id)
+      ? `<button class="primary small" type="button" disabled>Đang điểm danh...</button>`
+      : ck?.done
+        ? `<button class="ghost small" type="button" disabled title="${esc(ck.msg || "Hôm nay đã điểm danh")}">Đã điểm danh${ck.reward ? ` +${fmtNum(ck.reward)}` : ""}</button>`
+        : `<button class="primary small" data-checkin-acct="${esc(a.user_id)}" type="button" title="Điểm danh hàng ngày nhận điểm AutoClaw">Điểm danh</button>`;
     const viewBtn = `<button class="primary small" data-points-acct="${esc(a.user_id)}" type="button" title="Tải lại số điểm AutoClaw">Xem điểm</button>`;
     const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Sửa email hiển thị">Sửa email</button>`;
     const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản AutoClaw này (token đã lưu cũng mất; login AutoClaw desktop không bị ảnh hưởng)">Xóa</button>`;
-    return `<span class="actions-cell">${viewBtn} ${editBtn} ${deleteBtn}</span>`;
+    return `<span class="actions-cell">${checkinBtn} ${viewBtn} ${editBtn} ${deleteBtn}</span>`;
   }
   const hasJwt = !!(a.jwt && String(a.jwt).trim());
   const claimBtn = hasJwt
@@ -505,6 +513,9 @@ function renderAccountsTable() {
   });
   document.querySelectorAll("[data-points-acct]").forEach((btn) => {
     btn.onclick = () => queryPointsOnce(btn.dataset.pointsAcct);
+  });
+  document.querySelectorAll("[data-checkin-acct]").forEach((btn) => {
+    btn.onclick = () => checkinAutoclawOnce(btn.dataset.checkinAcct);
   });
   document.querySelectorAll(".account-row").forEach((tr) => {
     tr.onclick = (e) => {
@@ -798,6 +809,10 @@ $("btnRefreshAll")?.addEventListener("click", async () => {
 // của ZCode) nên mở app lại vẫn còn tài khoản. Tài khoản thêm bằng đường
 // desktop-import (đọc login AutoClaw desktop) thì chỉ sống trong phiên.
 const pointsCache = new Map(); // user_id -> AutoClawBalanceResult | { error }
+// Điểm danh hàng ngày: user_id -> {done, reward, msg} (trạng thái trong phiên;
+// server chỉ tính 1 lần/ngày nên bấm lại cũng không nhận trùng).
+const checkinState = new Map();
+const checkinRunning = new Set(); // user_id đang điểm danh (chống bấm 2 lần)
 let autoclawLoginTimer = null;
 let autoclawLoginFlowId = null;
 function fmtNum(v) {
@@ -836,6 +851,63 @@ async function queryPointsOnce(userId) {
     pointsCache.set(userId, { error: String(e) });
   }
   renderAccountsTable();
+}
+// Ngày Bắc Kinh ("YYYY-MM-DD") để đối chiếu grant_date trong sổ điểm
+// (quà hoạt động tính theo ngày Bắc Kinh, xem autoclaw_checkin.rs).
+function beijingToday() {
+  try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }); }
+  catch { return new Date().toISOString().slice(0, 10); }
+}
+
+// Điểm danh hàng ngày 1 tài khoản AutoClaw (task daily_signin):
+// thành công thì làm mới điểm ngay; đã điểm danh rồi thì nút đổi trạng thái
+// trong phiên. Chế độ demo (?demo=1): mô phỏng thành công +500 điểm.
+async function checkinAutoclawOnce(userId) {
+  const a = accountsCache.find((x) => x.user_id === userId);
+  if (!a || a.type !== "autoclaw") return;
+  if (checkinRunning.has(userId)) return;
+  if (isDemoMode()) {
+    checkinRunning.add(userId);
+    renderAccountsTable();
+    await new Promise((r) => setTimeout(r, 600));
+    checkinRunning.delete(userId);
+    const reward = 500;
+    checkinState.set(userId, { done: true, reward, msg: `Điểm danh thành công, +${fmtNum(reward)} điểm` });
+    const r = pointsCache.get(userId);
+    if (r && Number.isFinite(Number(r.available))) {
+      r.available = Number(r.available) + reward;
+      const w = Array.isArray(r.wallets) ? r.wallets[0] : null;
+      if (w) w.remaining_points = Number(w.remaining_points || 0) + reward;
+    }
+    renderAccountsTable();
+    $("loginStatus").textContent = `Điểm danh thành công, +${fmtNum(reward)} điểm (demo).`;
+    return;
+  }
+  checkinRunning.add(userId);
+  renderAccountsTable();
+  $("loginStatus").textContent = "Đang điểm danh...";
+  try {
+    const res = await invoke("autoclaw_daily_checkin", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl", today: beijingToday() });
+    checkinRunning.delete(userId);
+    const reward = Number(res?.rewardPoints) || 0;
+    const promo = res?.promotionReward;
+    const promoPts = promo?.granted ? (Number(promo.points) || 0) : 0;
+    const done = res?.success === true || res?.alreadyCompleted === true;
+    let msg;
+    if (res?.reason === "claimed") msg = `Điểm danh thành công, +${fmtNum(reward)} điểm`;
+    else if (res?.reason === "already") msg = "Hôm nay đã điểm danh";
+    else if (res?.reason === "failed") msg = `Điểm danh thất bại: ${res?.msg || ""}`.trim();
+    else msg = res?.taskHint ? `Điểm danh chưa nhận (${res.taskHint})` : "Điểm danh chưa nhận";
+    if (promoPts > 0) msg += ` · Quà hoạt động +${fmtNum(promoPts)} đã về`;
+    if (done) checkinState.set(userId, { done: true, reward, msg });
+    $("loginStatus").textContent = msg;
+    renderAccountsTable();
+    if (res?.success) await queryPointsOnce(userId);
+  } catch (e) {
+    checkinRunning.delete(userId);
+    renderAccountsTable();
+    $("loginStatus").textContent = "Điểm danh lỗi: " + e;
+  }
 }
 // Đưa credential OAuth vào bảng + lưu file (creds: {token, refreshToken?,
 // userName?, userId, deviceId, expiresAt?} từ Rust oauth-login).
@@ -1074,7 +1146,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.14";
+let appVersionText = "v0.1.15";
 async function showAppVersion() {
   const el = $("appVersion");
   try {

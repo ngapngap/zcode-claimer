@@ -2,6 +2,7 @@
 
 mod activation;
 mod autoclaw_balance;
+mod autoclaw_checkin;
 mod autoclaw_credentials;
 mod autoclaw_crypto;
 mod autoclaw_oauth;
@@ -149,6 +150,30 @@ async fn query_autoclaw_balance(
         autoclaw_credentials::credentials_from_token(region, &token, refresh_token.as_deref().unwrap_or(""), device_id.as_deref().unwrap_or(""))
     }?;
     autoclaw_balance::query_balance(&credentials).await
+}
+
+/// Diem danh hang ngay AutoClaw (task daily_signin + kiem tra qua hoat dong).
+/// `today` la ngay Bac Kinh ("YYYY-MM-DD") do frontend truyen — so sanh voi
+/// `grant_date` trong so diem (xem autoclaw_checkin.rs).
+#[tauri::command]
+async fn autoclaw_daily_checkin(
+    token: String,
+    refresh_token: Option<String>,
+    device_id: Option<String>,
+    region: Option<String>,
+    today: String,
+) -> Result<serde_json::Value, String> {
+    let region = match region.as_deref() {
+        Some("intl") => autoclaw_credentials::Region::Intl,
+        _ => autoclaw_credentials::Region::Cn,
+    };
+    let credentials = if token.trim().is_empty() {
+        autoclaw_credentials::local_credentials(region)
+            .or_else(|_| autoclaw_credentials::env_credentials(region).ok_or_else(|| "Khong thay dang nhap AutoClaw".to_string()))
+    } else {
+        autoclaw_credentials::credentials_from_token(region, &token, refresh_token.as_deref().unwrap_or(""), device_id.as_deref().unwrap_or(""))
+    }?;
+    autoclaw_checkin::daily_checkin(&credentials, &today).await
 }
 
 // ── AutoClaw Quoc te OAuth login ──
@@ -343,6 +368,7 @@ fn main() {
             export_router_json_autoclaw,
             query_balance,
             query_autoclaw_balance,
+            autoclaw_daily_checkin,
             autoclaw_oauth_captcha_config,
             start_autoclaw_oauth,
             poll_autoclaw_oauth,

@@ -19,6 +19,11 @@ const POINTS_WALLET_LEGACY_PATH: &str =
 const POINTS_EXPIRING_PATH: &str = "/agent-assetmgr/api/v1/points/expiring?biz_app_id=autoclaw";
 const AUTH_EXPIRED_CODES: &[i64] = &[410_000, 400_000];
 
+/// Code nghia la login het han (giong balance query) — dung chung cho check-in.
+pub(crate) fn is_auth_expired_code(code: i64) -> bool {
+    AUTH_EXPIRED_CODES.contains(&code)
+}
+
 const AUTH_APP_ID: &str = "100003";
 const AUTH_APP_KEY: &str = "38d2391985e2369a5fb8227d8e6cd5e5";
 const CLIENT_VERSION: &str = "1.18.5";
@@ -99,7 +104,7 @@ pub(crate) fn signed_auth_headers(token: &str) -> Vec<(String, String)> {
     headers
 }
 
-async fn userapi_get(
+pub(crate) async fn userapi_get(
     credentials: &AutoClawCredentials,
     path: &str,
     what: &str,
@@ -128,7 +133,7 @@ async fn userapi_get(
     Ok(payload)
 }
 
-async fn userapi_post(
+pub(crate) async fn userapi_post(
     credentials: &AutoClawCredentials,
     path: &str,
     body: &Value,
