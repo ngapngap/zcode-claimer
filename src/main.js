@@ -124,7 +124,9 @@ $("btnLogin").onclick = async () => {
   try {
     await openUrl(start.auth_url);
   } catch (e) {
-    $("loginStatus").textContent = "Mở browser thất bại: " + e + " — hãy copy địa chỉ này mở tay: " + start.auth_url;
+    // start có thể là null nếu lệnh init trả về rỗng (demo không có Tauri):
+    // không đọc lại start.auth_url ở đây nữa, không thì chính catch này ném tiếp.
+    $("loginStatus").textContent = "Mở browser thất bại: " + e + (start?.auth_url ? " — hãy copy địa chỉ này mở tay: " + start.auth_url : "");
     return;
   }
   $("loginStatus").textContent = "Đã mở browser — hãy nhập user/pass trên web ZCode để xác thực. Đang chờ bạn xác thực (poll mỗi vài giây)...";
@@ -280,41 +282,25 @@ function usageCell(a) {
     const pctLeft = total > 0 ? Math.max(0, Math.min(100, Math.round(remaining / total * 100))) : 0;
     const barCls = pctLeft < 10 ? "low" : "";
     const numsCls = remaining <= 0 ? "zero" : "";
-    return `<div class="usage-line"><div class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums ${numsCls}">${fmtUnits(remaining)} / ${fmtUnits(total)} token</span></div><span class="bp-bar"><span class="bp-fill ${barCls}" style="width:${pctLeft}%"></span></span></div>`;
+    return `<div class="usage-line"><div class="bp-top"><span class="bp-name" title="${esc(name)}">${esc(name)}</span><span class="bp-nums ${numsCls}">${fmtUnits(remaining)} / ${fmtUnits(total)}</span></div><span class="bp-bar"><span class="bp-fill ${barCls}" style="width:${pctLeft}%"></span></span></div>`;
   }).join("");
-  return `<div class="usage-lines">${lines}</div>`;
+  return `<div class="usage-lines quota">${lines}</div>`;
 }
 
-function expiryCell(a) {
-  if (a.type === "autoclaw") {
-    const r = pointsCache.get(a.user_id);
-    const exp = r?.expiring || null;
-    const pts = exp != null && exp.points != null ? Number(exp.points) : NaN;
-    const hasPts = Number.isFinite(pts);
-    // API trả text gốc tiếng Trung (vd "积分将于3天内到期") — không hiện nguyên:
-    // chỉ lấy số ngày từ đó, còn lại dịch hết sang tiếng Việt.
-    const m = exp && typeof exp.text === "string" ? exp.text.match(/(\d+)\s*天/) : null;
-    const days = m ? Number(m[1]) : NaN;
-    let txt = "";
-    if (hasPts && Number.isFinite(days)) txt = `Sắp hết hạn: ${fmtNum(pts)} điểm trong ${days} ngày`;
-    else if (hasPts) txt = `Sắp hết hạn: ${fmtNum(pts)} điểm`;
-    else if (Number.isFinite(days)) txt = `Sắp hết hạn trong ${days} ngày`;
-    return txt ? `<span title="${esc(txt)}">${esc(txt)}</span>` : '<span class="meta">—</span>';
-  }
-  const r = usageCache.get(a.user_id);
-  if (!r || r.error) return '<span class="meta">—</span>';
-  const times = [];
-  (r.balances || []).forEach((b) => { if (b.period_end) times.push(b.period_end); if (b.expires_at) times.push(b.expires_at); });
-  (r.plans || []).forEach((p) => { if (p.ends_at) times.push(p.ends_at); });
-  if (!times.length) return '<span class="meta">—</span>';
-  const soonest = Math.min(...times);
-  const diff = soonest * 1000 - Date.now();
-  if (diff <= 0) return '<span class="meta">Đã hết hạn</span>';
-  const days = diff / 86400000;
-  if (days >= 1) return `<span title="${esc(fmtTime(soonest))}">Còn ${Math.floor(days)} ngày</span>`;
-  const hours = diff / 3600000;
-  if (hours >= 1) return `<span title="${esc(fmtTime(soonest))}">Còn ${trimNum(hours)} giờ</span>`;
-  return `<span title="${esc(fmtTime(soonest))}">Còn ${Math.max(1, Math.round(diff / 60000))} phút</span>`;
+// Text hết hạn của AutoClaw (hiện thành 1 dòng nhỏ dưới các dòng điểm).
+// API trả text gốc tiếng Trung (vd "积分将于3天内到期") — không hiện nguyên:
+// chỉ lấy số ngày từ đó, còn lại dịch hết sang tiếng Việt. Trả "" nếu không có.
+function autoclawExpiryText(a) {
+  const r = pointsCache.get(a.user_id);
+  const exp = r?.expiring || null;
+  const pts = exp != null && exp.points != null ? Number(exp.points) : NaN;
+  const hasPts = Number.isFinite(pts);
+  const m = exp && typeof exp.text === "string" ? exp.text.match(/(\d+)\s*天/) : null;
+  const days = m ? Number(m[1]) : NaN;
+  if (hasPts && Number.isFinite(days)) return `Sắp hết hạn: ${fmtNum(pts)} điểm trong ${days} ngày`;
+  if (hasPts) return `Sắp hết hạn: ${fmtNum(pts)} điểm`;
+  if (Number.isFinite(days)) return `Sắp hết hạn trong ${days} ngày`;
+  return "";
 }
 
 function renderSummary() {
@@ -327,19 +313,10 @@ function renderSummary() {
     .map((a) => pointsCache.get(a.user_id))
     .filter((r) => r && !r.error && Number.isFinite(Number(r.available)))
     .reduce((s, r) => s + Number(r.available), 0);
-  // Dòng tóm tắt dưới tiêu đề thẻ (giữ nguyên như cũ).
-  const el = $("accountsSummary");
-  if (el) {
-    let text = `ZCode · ${zcodeAccts.length} tài khoản · Tổng còn ${fmtUnits(totalLeft)} token`;
-    if (acPoints > 0) text += ` · AutoClaw: ${fmtNum(acPoints)} điểm`;
-    el.textContent = text;
-  }
-  // Stat strip (bố cục mới): nối cùng các tổng trên, không tính lại.
+  // Tóm tắt ở tiêu đề từng cụm (vẫn thấy khi cụm thu gọn) + stat strip 3 ô.
   const set = (id, v) => { const n = $(id); if (n) n.textContent = v; };
-  set("statAccounts", String(accountsCache.length));
-  set("statAccountsSub", `${zcodeAccts.length} ZCode · ${acAccts.length} AutoClaw`);
   set("statTokens", fmtUnits(totalLeft));
-  set("statTokensSub", `ZCode · tổng được cấp ${fmtUnits(totalGranted)}`);
+  set("statTokensSub", `${zcodeAccts.length} tài khoản · cấp ${fmtUnits(totalGranted)}`);
   set("statPoints", acAccts.length ? fmtNum(acPoints) : "—");
   // Subtitle Điểm AutoClaw: lấy tên ví thật đang tải được (qua walletNameVi),
   // loại trùng — không hardcode tên ví nào nữa.
@@ -350,6 +327,12 @@ function renderSummary() {
       .flatMap((r) => r.wallets.map((w) => walletNameVi(w.show_name || w.bucket_id) || "Điểm"))
   )];
   set("statPointsSub", acAccts.length ? (acWalletNames.length ? acWalletNames.join(" · ") : "—") : "Chưa có tài khoản AutoClaw");
+  set("zcodeSummary", zcodeAccts.length
+    ? `${zcodeAccts.length} tài khoản · Token còn ${fmtUnits(totalLeft)} / ${fmtUnits(totalGranted)}`
+    : "Chưa có tài khoản ZCode");
+  set("autoclawSummary", acAccts.length
+    ? `${acAccts.length} tài khoản · ${fmtNum(acPoints)} điểm`
+    : "Chưa có tài khoản AutoClaw");
 }
 
 function statusCell(a) {
@@ -379,6 +362,12 @@ function statusCell(a) {
   return '<span class="tag active">Sẵn sàng</span>';
 }
 
+// Menu "…" trên mỗi dòng: Sửa email / Xóa (ít dùng) gom vào đây;
+// nút chính (Nhận gói / Điểm danh / Xem điểm) giữ nguyên ngoài bảng.
+function rowMenuBtns(a) {
+  return `<span class="row-menu"><button class="ghost small row-menu-btn" data-menu-acct="${esc(a.user_id)}" type="button" aria-haspopup="true" aria-expanded="false" title="Thêm thao tác"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button><span class="row-menu-pop" hidden><button type="button" data-edit-email="${esc(a.user_id)}">Sửa email</button><button type="button" class="danger" data-delete-acct="${esc(a.user_id)}">Xóa tài khoản</button></span></span>`;
+}
+
 function actionsCell(a) {
   if (a.type === "autoclaw") {
     // AutoClaw không có JWT ZCode nên không Nhận gói. Sửa email được
@@ -392,17 +381,13 @@ function actionsCell(a) {
         ? `<button class="ghost small" type="button" disabled title="${esc(ck.msg || "Hôm nay đã điểm danh")}">Đã điểm danh${ck.reward ? ` +${fmtNum(ck.reward)}` : ""}</button>`
         : `<button class="primary small" data-checkin-acct="${esc(a.user_id)}" type="button" title="Điểm danh hàng ngày nhận điểm AutoClaw">Điểm danh</button>`;
     const viewBtn = `<button class="primary small" data-points-acct="${esc(a.user_id)}" type="button" title="Tải lại số điểm AutoClaw">Xem điểm</button>`;
-    const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Sửa email hiển thị">Sửa email</button>`;
-    const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản AutoClaw này (token đã lưu cũng mất; login AutoClaw desktop không bị ảnh hưởng)">Xóa</button>`;
-    return `<span class="actions-cell">${checkinBtn} ${viewBtn} ${editBtn} ${deleteBtn}</span>`;
+    return `<span class="actions-cell">${checkinBtn} ${viewBtn} ${rowMenuBtns(a)}</span>`;
   }
   const hasJwt = !!(a.jwt && String(a.jwt).trim());
   const claimBtn = hasJwt
     ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể nhận của tài khoản này"${batchRunning ? " disabled" : ""}>Nhận gói</button>`
     : `<button class="ghost small" type="button" disabled title="Chưa có JWT — cần đăng nhập trước">Nhận gói</button>`;
-  const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Nhập/sửa email đăng nhập của tài khoản này (để nhận biết tài khoản, dùng khi export)">Sửa email</button>`;
-  const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản này khỏi danh sách đã lưu (JWT sẽ mất, muốn dùng lại phải đăng nhập lại)">Xóa</button>`;
-  return `<span class="actions-cell">${claimBtn} ${editBtn} ${deleteBtn}</span>`;
+  return `<span class="actions-cell">${claimBtn} ${rowMenuBtns(a)}</span>`;
 }
 
 // Tên hiển thị = email đăng nhập. ZCode OAuth chỉ trả user_id (không có email),
@@ -413,15 +398,12 @@ function displayName(a) {
   return a.user_id || "?";
 }
 
+// Dòng phụ dưới tên tài khoản: chỉ hiện username khi nó thêm thông tin
+// so với tên hiển thị (email). User ID / Device ID dài không hiện ở đây
+// nữa — xem bằng tooltip (title) của ô tài khoản.
 function accountSub(a) {
-  const parts = [];
-  if (a.email) {
-    if (a.user_id) parts.push(a.user_id);
-    if (a.username) parts.push(a.username);
-  } else if (a.username) {
-    if (a.user_id) parts.push(a.user_id);
-  }
-  return parts.join(" · ");
+  if (a.email && a.username && a.username.trim() && a.username.trim() !== a.email.trim()) return a.username.trim();
+  return "";
 }
 
 function startEditEmail(userId) {
@@ -482,41 +464,59 @@ async function deleteAccount(userId) {
   if (st) st.textContent = `Đã xóa tài khoản ${label}.`;
 }
 
-function renderAccountsTable() {
-  const el = $("accountsList");
-  if (!el) return;
-  if (!accountsCache.length) {
-    el.innerHTML = '<p class="hint">Chưa có tài khoản nào. Chọn loại rồi bấm Đăng nhập để thêm tài khoản đầu tiên.</p>';
-    renderSummary();
-    return;
-  }
-  const rows = accountsCache.map((a) => {
-    const active = a.user_id === currentUserId;
-    const isAc = a.type === "autoclaw";
-    return `<tr class="account-row ${active ? "is-active" : ""}" data-userid="${esc(a.user_id)}">
-      <td class="acct"${isAc ? "" : ` title="Device ID: ${esc(a.device_mid || "")}"`}><b>${esc(displayName(a))}</b>${isAc ? ' <span class="tag">AutoClaw</span>' : ""}${active ? ' <span class="tag active">Đang dùng</span>' : ""}${!isAc && !a.email ? ' <span class="tag pending">Chưa có email</span>' : ""}<div class="meta">${esc(accountSub(a))}</div></td>
+// 2 bảng riêng: ZCode (Tài khoản · Quota · Trạng thái · Thao tác) và
+// AutoClaw (Tài khoản · Điểm · Trạng thái · Thao tác). Mỗi tài khoản 1 dòng,
+// không trộn 2 loại vào chung 1 bảng nữa.
+function accountRowHtml(a) {
+  const active = a.user_id === currentUserId;
+  const isAc = a.type === "autoclaw";
+  const sub = accountSub(a);
+  const title = `User ID: ${a.user_id}` + (!isAc && a.device_mid ? ` · Device ID: ${a.device_mid}` : "");
+  return `<tr class="account-row ${active ? "is-active" : ""}" data-userid="${esc(a.user_id)}">
+      <td class="acct" title="${esc(title)}"><b>${esc(displayName(a))}</b>${active ? ' <span class="tag active">Đang dùng</span>' : ""}${!isAc && !a.email ? ' <span class="tag pending">Chưa có email</span>' : ""}${sub ? `<div class="meta">${esc(sub)}</div>` : ""}</td>
       <td>${isAc ? pointsCell(a) : usageCell(a)}</td>
-      <td>${expiryCell(a)}</td>
       <td>${statusCell(a)}</td>
       <td>${actionsCell(a)}</td>
     </tr>`;
-  }).join("");
-  el.innerHTML = `<table class="accounts-table"><thead><tr><th class="acct">Tài khoản</th><th>Quota</th><th>Hết hạn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderAccountsTable() {
+  const zEl = $("zcodeList");
+  const acEl = $("autoclawList");
+  if (!zEl || !acEl) return;
+  closeAllRowMenus();
+  const zcodeAccts = accountsCache.filter((a) => a.type !== "autoclaw");
+  const acAccts = accountsCache.filter((a) => a.type === "autoclaw");
+  zEl.innerHTML = zcodeAccts.length
+    ? `<table class="accounts-table"><thead><tr><th class="acct">Tài khoản</th><th>Quota</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${zcodeAccts.map(accountRowHtml).join("")}</tbody></table>`
+    : '<p class="hint">Chưa có tài khoản ZCode nào. Chọn ZCode rồi bấm Đăng nhập để thêm tài khoản đầu tiên.</p>';
+  acEl.innerHTML = acAccts.length
+    ? `<table class="accounts-table"><thead><tr><th class="acct">Tài khoản</th><th>Điểm</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${acAccts.map(accountRowHtml).join("")}</tbody></table>`
+    : '<p class="hint">Chưa có tài khoản AutoClaw nào. Chọn AutoClaw rồi bấm Đăng nhập để thêm tài khoản đầu tiên.</p>';
   renderSummary();
   document.querySelectorAll("[data-claim-acct]").forEach((btn) => {
     btn.onclick = () => openPlansForAccount(btn.dataset.claimAcct);
   });
   document.querySelectorAll("[data-edit-email]").forEach((btn) => {
-    btn.onclick = () => startEditEmail(btn.dataset.editEmail);
+    btn.onclick = () => { closeAllRowMenus(); startEditEmail(btn.dataset.editEmail); };
   });
   document.querySelectorAll("[data-delete-acct]").forEach((btn) => {
-    btn.onclick = () => deleteAccount(btn.dataset.deleteAcct);
+    btn.onclick = () => { closeAllRowMenus(); deleteAccount(btn.dataset.deleteAcct); };
   });
   document.querySelectorAll("[data-points-acct]").forEach((btn) => {
     btn.onclick = () => queryPointsOnce(btn.dataset.pointsAcct);
   });
   document.querySelectorAll("[data-checkin-acct]").forEach((btn) => {
     btn.onclick = () => checkinAutoclawOnce(btn.dataset.checkinAcct);
+  });
+  document.querySelectorAll("[data-menu-acct]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pop = btn.parentElement.querySelector(".row-menu-pop");
+      const wasHidden = !pop || pop.hidden;
+      closeAllRowMenus();
+      if (wasHidden && pop) { pop.hidden = false; btn.setAttribute("aria-expanded", "true"); }
+    };
   });
   document.querySelectorAll(".account-row").forEach((tr) => {
     tr.onclick = (e) => {
@@ -529,6 +529,42 @@ function renderAccountsTable() {
     };
   });
 }
+
+// Đóng mọi menu "…" đang mở (gọi khi render lại bảng, bấm ra ngoài, Esc).
+function closeAllRowMenus() {
+  document.querySelectorAll(".row-menu-pop").forEach((p) => { p.hidden = true; });
+  document.querySelectorAll("[data-menu-acct]").forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+document.addEventListener("click", (e) => { if (!e.target.closest(".row-menu")) closeAllRowMenus(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllRowMenus(); });
+
+// ── Thu gọn / mở rộng từng cụm (ZCode / AutoClaw), nhớ bằng localStorage ──
+// Thu gọn chỉ ẩn phần thân thẻ (bảng) — tiêu đề, tổng số và nút thao tác
+// (Nhận tất cả / Làm mới tất cả) vẫn thấy được. Ẩn/hiện chỉ là xem:
+// "Nhận tất cả" vẫn nhận cho mọi tài khoản ZCode dù thẻ đang thu gọn.
+function applyCollapse(which, collapsed, save = true) {
+  const card = $(which === "zcode" ? "zcodeCard" : "autoclawCard");
+  const btn = document.querySelector(`[data-collapse="${which}"]`);
+  if (!card || !btn) return;
+  card.classList.toggle("is-collapsed", collapsed);
+  btn.setAttribute("aria-expanded", String(!collapsed));
+  const label = btn.querySelector(".collapse-label");
+  if (label) label.textContent = collapsed ? "Mở rộng" : "Thu gọn";
+  if (save) { try { localStorage.setItem(`zc.ui.collapsed.${which}`, collapsed ? "1" : "0"); } catch {} }
+}
+function initCollapse() {
+  ["zcode", "autoclaw"].forEach((which) => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(`zc.ui.collapsed.${which}`) === "1"; } catch {}
+    applyCollapse(which, collapsed, false);
+    const btn = document.querySelector(`[data-collapse="${which}"]`);
+    if (btn) btn.onclick = () => {
+      const card = $(which === "zcode" ? "zcodeCard" : "autoclawCard");
+      applyCollapse(which, !card.classList.contains("is-collapsed"));
+    };
+  });
+}
+initCollapse();
 
 async function queryUsageOnce(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
@@ -651,7 +687,7 @@ async function switchAccount(userId) {
 }
 
 async function loadAccounts() {
-  const el = $("accountsList");
+  const el = $("zcodeList");
   if (!el) return;
   try {
     accountsCache = (await invoke("list_accounts")) || [];
@@ -1115,14 +1151,18 @@ function pointsCell(a) {
   const avail = Number(r.available);
   const wallets = Array.isArray(r.wallets) ? r.wallets : [];
   if (!wallets.length) {
-    return `<div class="usage-lines"><div class="usage-line"><div class="bp-top"><span class="bp-name">Điểm</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></div></div></div>`;
+    const expTxt = autoclawExpiryText(a);
+    const expLine = expTxt ? `<div class="exp-line">${esc(expTxt)}</div>` : "";
+    return `<div class="usage-lines points"><div class="usage-line"><div class="bp-top"><span class="bp-name">Điểm</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></div></div>${expLine}</div>`;
   }
   const lines = wallets.map((w) => {
     const name = walletNameVi(w.show_name || w.bucket_id) || "Điểm";
     const pts = Number(w.remaining_points) || 0;
     return `<div class="usage-line"><div class="bp-top"><span class="bp-name">${esc(name)}</span><span class="bp-nums">${fmtNum(pts)} điểm</span></div></div>`;
   }).join("");
-  return `<div class="usage-lines">${lines}</div>`;
+  const expTxt = autoclawExpiryText(a);
+  const expLine = expTxt ? `<div class="exp-line">${esc(expTxt)}</div>` : "";
+  return `<div class="usage-lines points">${lines}${expLine}</div>`;
 }
 
 // ── Persistence Rust thay localStorage JWT ──
@@ -1147,7 +1187,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.16";
+let appVersionText = "v0.1.17";
 async function showAppVersion() {
   const el = $("appVersion");
   try {

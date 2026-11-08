@@ -1,9 +1,10 @@
-/* ZCode Claimer — UI bản B "Next-gen Effects" (libraries.dev).
-   Bố cục mới: topbar 2 hàng + stepper ngang + stat strip + bảng full-width
-   + dải cập nhật cuối trang (không còn sidebar 216px).
+/* ZCode Claimer — UI 0.1.17: 2 cụm riêng (ZCode / AutoClaw) + thu gọn từng cụm.
+   Bố cục: topbar + stat strip 3 ô + thẻ ZCode + thẻ AutoClaw + dải cập nhật.
    Giữ nguyên mọi id/class mà main.js dùng, chỉ đổi lớp visual.
    Không CDN, không emoji làm icon, chỉ SVG inline + system font.
-   Tone sáng, xanh lá/xanh dương nhạt, KHÔNG neon, KHÔNG tím/hồng.
+   Tone sáng, MỘT màu chủ đạo là xanh dương (#2563eb); xanh lá chỉ dùng cho
+   trạng thái thành công (pill Sẵn sàng, thanh quota, số token còn).
+   Không còn stepper trang trí, không orb/beam gây nhiễu.
    Mọi animation tắt khi prefers-reduced-motion: reduce. */
 * { box-sizing: border-box; }
 
@@ -30,29 +31,14 @@
   --radius-sm: 8px;
   --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 16px rgba(15, 23, 42, .04);
   --shadow-lg: 0 2px 4px rgba(15, 23, 42, .06), 0 16px 40px rgba(37, 99, 235, .14);
-  /* Hiệu ứng B: xanh lá / xanh dương nhạt, độ bão hòa thấp */
-  --beam-a: #34d399;
-  --beam-b: #60a5fa;
   --glow-cta: rgba(37, 99, 235, .32);
-  --glow-mint: rgba(16, 185, 129, .16);
-}
-/* Border Beam cần góc quay làm custom property có kiểu, để animate được.
-   Trình duyệt không hỗ trợ @property: góc giữ 0deg, vệt beam đứng yên
-   thành 1 đoạn gradient mềm trên viền — không vỡ layout. */
-@property --beam-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
 }
 
 html, body { height: 100%; }
 
 body {
   font-family: -apple-system, "Segoe UI", "Noto Sans", Roboto, sans-serif;
-  background:
-    radial-gradient(640px 320px at 12% -4%, rgba(167, 243, 208, .38), transparent 62%),
-    radial-gradient(640px 320px at 88% 6%, rgba(191, 219, 254, .42), transparent 62%),
-    var(--bg);
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%);
   margin: 0;
   color: var(--text);
   line-height: 1.5;
@@ -64,20 +50,10 @@ h1, h2, h3 { letter-spacing: -.01em; }
 button { font: inherit; }
 input { font: inherit; }
 
-/* ---------- Thinking Orbs: 2 quầng sáng mờ trôi chậm sau nền ---------- */
-.orb {
-  position: fixed; border-radius: 50%; filter: blur(64px);
-  pointer-events: none; z-index: 0; opacity: .55;
-}
-.orb-a { width: 320px; height: 320px; background: #bbf7d0; top: -90px; left: -70px; animation: drift-a 26s ease-in-out infinite alternate; }
-.orb-b { width: 300px; height: 300px; background: #bfdbfe; top: 34%; right: -90px; animation: drift-b 32s ease-in-out infinite alternate; }
-@keyframes drift-a { to { transform: translate(44px, 32px) scale(1.08); } }
-@keyframes drift-b { to { transform: translate(-38px, -28px) scale(1.06); } }
-
-/* ---------- Khung 1 cột: header + stepper + stats + bảng + update strip ---------- */
+/* ---------- Khung 1 cột: header + stats + 2 thẻ cụm + update strip ---------- */
 .app {
   min-height: 100vh;
-  padding: 16px; display: flex; flex-direction: column; gap: 16px;
+  padding: 16px; display: flex; flex-direction: column; gap: 12px;
   position: relative; z-index: 1;
 }
 
@@ -104,59 +80,13 @@ input { font: inherit; }
 .status-line { font-size: 13px; color: var(--muted); margin: 0; white-space: pre-wrap; word-break: break-word; }
 .status-line:empty { display: none; }
 
-/* ---------- Hàng 2: stepper ngang 3 bước — bề mặt glassy nhẹ ---------- */
-.steps {
-  display: flex; align-items: center; gap: 8px;
-  background: rgba(255, 255, 255, .88);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 8px 16px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .9);
-  animation: rise .45s ease .05s both;
-}
-.step { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; color: var(--muted); }
-.step-dot {
-  width: 32px; height: 32px; flex: none; display: grid; place-items: center;
-  border-radius: 8px; background: var(--surface-2); color: var(--muted);
-}
-.step div { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
-.step strong { font-size: 13px; color: var(--text); white-space: nowrap; }
-.step div span { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-/* Số trạng thái bước (setStep() đổi: số / ✓) — đặt cuối mỗi bước. */
-.step .step-state {
-  width: 22px; height: 22px; flex: none; margin-left: auto;
-  display: grid; place-items: center;
-  border-radius: 50%; background: var(--surface-2);
-  font-size: 11px; font-weight: 700; color: var(--muted);
-}
-.step.is-done .step-dot { background: var(--ok-bg); color: var(--ok-text); }
-.step.is-done .step-state { background: var(--ok-bg); color: var(--ok-text); }
-.step.is-active { color: var(--ink-2); }
-.step.is-active .step-dot { background: var(--accent); color: #fff; position: relative; }
-.step.is-active .step-state { background: var(--accent); color: #fff; }
-/* Thinking Orb thu nhỏ: vòng thở quanh chấm bước đang làm. */
-.step.is-active .step-dot::after {
-  content: ""; position: absolute; inset: -4px; border-radius: 11px;
-  border: 2px solid rgba(37, 99, 235, .35);
-  animation: pulse-ring 2.4s ease-out infinite;
-}
-@keyframes pulse-ring {
-  0% { transform: scale(.92); opacity: .8; }
-  70% { transform: scale(1.14); opacity: 0; }
-  100% { transform: scale(1.14); opacity: 0; }
-}
-.step.is-active strong { color: var(--ink-2); }
-.step-sep { flex: none; width: 32px; height: 2px; background: var(--border); border-radius: 2px; }
-.step-sep.done { background: var(--ok-text); }
-
-/* ---------- Hàng 3: dải tổng quan 4 ô — glassy + hover nâng nhẹ ---------- */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+/* ---------- Hàng 2: dải tổng quan 3 ô — ZCode · AutoClaw · Giờ nhận ---------- */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .stat {
-  background: rgba(255, 255, 255, .88);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 16px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .9);
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
   min-width: 0;
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
   animation: rise .45s ease both;
@@ -164,51 +94,51 @@ input { font: inherit; }
 .stat:nth-child(1) { animation-delay: .08s; }
 .stat:nth-child(2) { animation-delay: .14s; }
 .stat:nth-child(3) { animation-delay: .20s; }
-.stat:nth-child(4) { animation-delay: .26s; }
-.stat:hover { transform: translateY(-2px); border-color: #bfdbfe; box-shadow: 0 6px 20px rgba(15, 23, 42, .08), inset 0 1px 0 rgba(255, 255, 255, .9); }
+.stat:hover { transform: translateY(-2px); border-color: #bfdbfe; box-shadow: 0 6px 20px rgba(15, 23, 42, .08); }
 .stat .label {
   font-size: 11px; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
 }
 .stat .value {
-  font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
+  font-size: 20px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2;
   font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .stat .value.green { color: var(--ok-text); }
 .stat .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- Thẻ + bảng tài khoản (full-width) ---------- */
+/* ---------- Thẻ cụm (ZCode / AutoClaw) ---------- */
 .card {
-  background: rgba(255, 255, 255, .92);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .9);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
   animation: rise .45s ease .12s both;
 }
-/* Border Beam: 1 vệt sáng xanh lá → xanh dương chạy chậm quanh viền thẻ chính.
-   Nền: trắng (padding-box) + vệt beam (border-box) + viền nền xám nhạt. */
-.beam-card {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(rgba(255, 255, 255, .94), rgba(255, 255, 255, .94)) padding-box,
-    conic-gradient(from var(--beam-angle),
-      var(--beam-a) 0deg, var(--beam-b) 52deg,
-      transparent 96deg, transparent 360deg) border-box,
-    linear-gradient(var(--border), var(--border)) border-box;
-  animation: rise .45s ease .12s both, beam-rotate 9s linear infinite;
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px; }
+.card-head-actions { display: flex; gap: 8px; flex: none; align-items: center; }
+.card-title { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.card-title > div { min-width: 0; }
+.card-head h2 { margin: 0; font-size: 16px; line-height: 1.3; }
+.card-sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Huy hiệu chữ phân biệt 2 cụm ngay từ cái nhìn đầu tiên. */
+.card-badge {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+  border-radius: 8px; font-size: 13px; font-weight: 800; color: #fff;
+  margin-top: 1px;
 }
-@keyframes beam-rotate { to { --beam-angle: 360deg; } }
-.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
-.card-head-actions { display: flex; gap: 8px; flex: none; }
-.card-head h1 { margin: 0; font-size: 16.5px; }
-.card-head .hint { margin: 3px 0 0; }
+.card-badge.zcode { background: var(--accent); }
+.card-badge.autoclaw { background: #334155; }
+/* Thu gọn cụm: chỉ ẩn thân thẻ (bảng) — tiêu đề, tổng số, nút thao tác vẫn thấy. */
+.collapse-btn .chev { transition: transform .2s ease; }
+.card.is-collapsed .collapse-btn .chev { transform: rotate(-90deg); }
+.card.is-collapsed .card-body { display: none; }
+.card.is-collapsed .card-head { margin-bottom: 0; }
 .hint { color: var(--muted); font-size: 12.5px; }
-#accountsSummary:empty { display: none; }
 .accounts-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
 .accounts-table th {
   text-align: left; font-size: 11px; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: .5px; padding: 8px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 .accounts-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .accounts-table tr:last-child td { border-bottom: none; }
@@ -228,6 +158,24 @@ input { font: inherit; }
 .actions-cell { white-space: nowrap; }
 .actions-cell button { margin-right: 6px; }
 .actions-cell button:last-child { margin-right: 0; }
+/* Menu "…" trên mỗi dòng: Sửa email / Xóa gom vào đây. */
+.row-menu { position: relative; display: inline-block; }
+.row-menu-btn { padding: 7px 8px !important; }
+.row-menu-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  display: flex; flex-direction: column; min-width: 150px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-lg);
+}
+.row-menu-pop[hidden] { display: none; }
+.row-menu-pop button {
+  display: flex; justify-content: flex-start; width: 100%;
+  background: transparent; border: none; box-shadow: none;
+  padding: 8px 10px; font-size: 13px; font-weight: 600; border-radius: 6px;
+}
+.row-menu-pop button:hover { background: var(--surface-2); }
+.row-menu-pop button.danger { color: var(--err-text); }
+.row-menu-pop button.danger:hover { background: #fef2f2; }
 .email-edit { width: 100%; padding: 7px 9px; border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; margin-bottom: 6px; background: var(--surface); }
 .email-edit:focus { outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
 .btn-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
@@ -236,8 +184,10 @@ input { font: inherit; }
 .result.error { color: var(--err-text); }
 .result.ok { color: var(--ok-text); }
 
-/* Quota: mỗi bucket 1 dòng, hiện luôn */
-.usage-lines { display: flex; flex-direction: column; gap: 8px; min-width: 240px; max-width: 300px; width: 100%; }
+/* Quota / Điểm: mỗi bucket 1 dòng, hiện luôn */
+.usage-lines { display: flex; flex-direction: column; gap: 8px; min-width: 200px; max-width: 280px; width: 100%; }
+.usage-lines.quota { min-width: 260px; max-width: 300px; }
+.usage-lines.points { min-width: 200px; max-width: 260px; }
 .usage-line {
   background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 10px 8px;
   transition: border-color .18s ease, box-shadow .18s ease;
@@ -251,6 +201,7 @@ input { font: inherit; }
 .bp-fill { display: block; height: 100%; background: #16a34a; border-radius: 99px; animation: bar-in .8s cubic-bezier(.22, .61, .36, 1) both; }
 .bp-fill.low { background: #f59e0b; }
 @keyframes bar-in { from { width: 0; } }
+.exp-line { font-size: 12px; color: var(--warn-text); padding: 0 2px; }
 .usage-cell { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .usage-cell.muted { color: var(--muted); }
 .usage-cell.err { color: var(--err-text); font-weight: 600; }
@@ -258,13 +209,13 @@ input { font: inherit; }
 .usage-cell.warn { color: var(--warn-text); font-weight: 600; }
 .usage-cell .meta { color: var(--muted); font-weight: 400; }
 
-/* ---------- Dải cập nhật cuối trang — viền gradient tĩnh nhạt (echo của beam) ---------- */
+/* ---------- Dải cập nhật cuối trang ---------- */
 .update-strip {
   display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-top: auto;
   border: 1px solid transparent;
   background:
     linear-gradient(rgba(255, 255, 255, .94), rgba(255, 255, 255, .94)) padding-box,
-    linear-gradient(135deg, #a7f3d0, #bfdbfe, #a7f3d0) border-box;
+    linear-gradient(135deg, #bfdbfe, #dbeafe, #bfdbfe) border-box;
 }
 .update-strip svg { color: var(--accent); flex: none; }
 .update-strip .update-text { flex: 1; min-width: 0; }
@@ -284,10 +235,10 @@ button {
 button:hover { border-color: var(--border-strong); box-shadow: 0 2px 8px rgba(23, 24, 43, .08); }
 button:active { transform: translateY(1px) scale(.99); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* CTA chính: glow mềm (Voice glow) + vệt sáng kim loại quét khi hover (Liquid Metal). */
+/* CTA chính: glow mềm + vệt sáng kim loại quét khi hover (Liquid Metal). */
 button.primary {
   background: var(--accent); color: #fff; border-color: transparent;
-  box-shadow: 0 2px 10px var(--glow-cta), 0 0 18px var(--glow-mint), inset 0 1px 0 rgba(255, 255, 255, .35);
+  box-shadow: 0 2px 10px var(--glow-cta), inset 0 1px 0 rgba(255, 255, 255, .35);
 }
 button.primary::after {
   content: ""; position: absolute; top: 0; left: -80%; width: 55%; height: 100%;
@@ -296,7 +247,7 @@ button.primary::after {
 }
 button.primary:hover {
   background: var(--accent-2);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, .38), 0 0 26px rgba(16, 185, 129, .24), inset 0 1px 0 rgba(255, 255, 255, .4);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, .38), inset 0 1px 0 rgba(255, 255, 255, .4);
 }
 button.primary:hover::after { left: 135%; }
 button.secondary { background: var(--accent-soft); color: var(--ink-2); border-color: #bfdbfe; }
@@ -333,7 +284,7 @@ button:not(.primary) .ripple { background: rgba(37, 99, 235, .18); }
 @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
 @keyframes fade-in { from { opacity: 0; } }
 
-/* Tôn trọng prefers-reduced-motion: tắt hết animation/transition (kể cả beam, orb, sheen, magnetic qua JS). */
+/* Tôn trọng prefers-reduced-motion: tắt hết animation/transition. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important; animation-iteration-count: 1 !important;
@@ -346,7 +297,4 @@ button:not(.primary) .ripple { background: rgba(37, 99, 235, .18); }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .topbar { flex-direction: column; align-items: stretch; }
   .top-actions { justify-content: flex-start; }
-  .steps { flex-wrap: wrap; }
-  .step div span { display: none; }
-  .step .step-state { display: none; }
 }
