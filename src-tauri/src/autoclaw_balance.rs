@@ -46,9 +46,16 @@ pub struct AutoClawBalanceResult {
     pub subscription: Value,
     pub expiring: Value,
     pub raw: Value,
+    /// User id + email of the credential used (from JWT claims / auth.json),
+    /// so the frontend can show the AutoClaw login as its own account row.
+    pub user_id: String,
+    pub email: String,
 }
 
-fn signed_auth_headers(token: &str) -> Vec<(String, String)> {
+/// Ham ky dung chung cho moi request userapi AutoClaw (balance / refresh /
+/// oauth): appId/appKey cua client + timestamp giay + MD5. Giu 1 ban duy nhat
+/// o day (dung chung 1 ban) — oauth.rs dung lai, khong copy rieng.
+pub(crate) fn signed_auth_headers(token: &str) -> Vec<(String, String)> {
     let timestamp = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -80,7 +87,13 @@ fn signed_auth_headers(token: &str) -> Vec<(String, String)> {
         ("X-Trace-Id".to_string(), trace),
     ];
     if !token.is_empty() {
-        headers.push(("authorization".to_string(), format!("Bearer {}", token)));
+        // Boc 1 lan "Bearer " truoc khi ghep (tranh "Bearer Bearer ..."):
+        // token tu login co the da mang san prefix, ghep them se thanh
+        // "Bearer Bearer ..." -> upstream cat ra token sai -> 401 co dinh.
+        let bare = autoclaw_crypto::strip_bearer(token);
+        if !bare.is_empty() {
+            headers.push(("authorization".to_string(), format!("Bearer {bare}")));
+        }
     }
     headers
 }
@@ -456,5 +469,7 @@ pub async fn query_balance(credentials: &AutoClawCredentials) -> Result<AutoClaw
         subscription,
         expiring,
         raw: Value::Object(raw),
+        user_id: credentials.user_id.clone(),
+        email: credentials.email.clone(),
     })
 }

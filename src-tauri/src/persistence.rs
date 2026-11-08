@@ -254,3 +254,97 @@ pub fn list_accounts(app_data: Option<PathBuf>) -> Result<Vec<SavedConfig>, Stri
     Ok(map.into_values().collect())
 }
 
+// ── AutoClaw accounts (OAuth Quoc te) ──
+
+/// File rieng cho AutoClaw: khong tron vao accounts.json cua ZCode (dang khac
+/// nhau: token/refresh/device cua AutoClaw, khong co JWT/deviceMid ZCode).
+/// File: autoclaw-accounts.json  { "user_id": AutoClawAccount, ... }
+/// user_id o day la id THO (khong tien to "autoclaw:") — frontend them tien to
+/// de khoi dung id ZCode khi hien chung 1 bang.
+const AUTOCLAW_ACCOUNTS_FILE: &str = "autoclaw-accounts.json";
+
+/// 1 tai khoan AutoClaw da dang nhap OAuth (token lay tu oauth-login, co
+/// refresh_token de sau nay lam refresh; chua co refresh — het han thi
+/// dang nhap lai).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AutoClawAccount {
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub user_id: String,
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub user_name: String,
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub email: String,
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub token: String,
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub refresh_token: String,
+    #[serde(default, deserialize_with = "empty_string_if_null")]
+    pub device_id: String,
+    /// Han token (unix ms, tu JWT exp) — de hien thi, chua dung de refresh.
+    #[serde(default)]
+    pub expires_at: Option<f64>,
+}
+
+fn autoclaw_accounts_path(app_data: &Option<PathBuf>) -> Result<PathBuf, String> {
+    let dir = app_data.clone().unwrap_or_else(|| app_data_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    Ok(dir.join(AUTOCLAW_ACCOUNTS_FILE))
+}
+
+fn load_autoclaw_accounts_raw(
+    app_data: &Option<PathBuf>,
+) -> Result<std::collections::HashMap<String, AutoClawAccount>, String> {
+    let path = autoclaw_accounts_path(app_data)?;
+    match read_json(&path)? {
+        Some(serde_json::Value::Object(map)) => {
+            let mut out = std::collections::HashMap::new();
+            for (k, v) in map {
+                if let Ok(cfg) = serde_json::from_value::<AutoClawAccount>(v) {
+                    out.insert(k, cfg);
+                }
+            }
+            Ok(out)
+        }
+        Some(_) => Ok(std::collections::HashMap::new()),
+        None => Ok(std::collections::HashMap::new()),
+    }
+}
+
+fn save_autoclaw_accounts_raw(
+    app_data: &Option<PathBuf>,
+    map: &std::collections::HashMap<String, AutoClawAccount>,
+) -> Result<(), String> {
+    let path = autoclaw_accounts_path(app_data)?;
+    let v = serde_json::to_value(map).map_err(|e| e.to_string())?;
+    write_json(&path, &v)
+}
+
+/// Tat ca tai khoan AutoClaw da luu.
+pub fn list_autoclaw_accounts(app_data: Option<PathBuf>) -> Result<Vec<AutoClawAccount>, String> {
+    Ok(load_autoclaw_accounts_raw(&app_data)?.into_values().collect())
+}
+
+/// Luu/them 1 tai khoan AutoClaw (key = user_id tho).
+pub fn save_autoclaw_account(app_data: Option<PathBuf>, account: &AutoClawAccount) -> Result<(), String> {
+    let key = account.user_id.trim();
+    if key.is_empty() {
+        return Err("AutoClaw account thieu user_id".to_string());
+    }
+    let mut map = load_autoclaw_accounts_raw(&app_data)?;
+    map.insert(key.to_string(), account.clone());
+    save_autoclaw_accounts_raw(&app_data, &map)
+}
+
+/// Xoa 1 tai khoan AutoClaw (chi xoa file app nay, khong anh huong login desktop).
+pub fn delete_autoclaw_account(app_data: Option<PathBuf>, user_id: &str) -> Result<bool, String> {
+    let key = user_id.trim();
+    if key.is_empty() {
+        return Ok(false);
+    }
+    let mut map = load_autoclaw_accounts_raw(&app_data)?;
+    if map.remove(key).is_some() {
+        save_autoclaw_accounts_raw(&app_data, &map)?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+

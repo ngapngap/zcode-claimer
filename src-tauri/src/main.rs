@@ -4,6 +4,7 @@ mod activation;
 mod autoclaw_balance;
 mod autoclaw_credentials;
 mod autoclaw_crypto;
+mod autoclaw_oauth;
 mod balance;
 mod captcha_config;
 mod claim;
@@ -150,6 +151,50 @@ async fn query_autoclaw_balance(
     autoclaw_balance::query_balance(&credentials).await
 }
 
+// ── AutoClaw Quoc te OAuth login ──
+
+#[tauri::command]
+async fn autoclaw_oauth_captcha_config() -> Result<serde_json::Value, String> {
+    autoclaw_oauth::captcha_config().await
+}
+
+#[tauri::command]
+async fn start_autoclaw_oauth(
+    vendor: Option<String>,
+    captcha_verify_param: String,
+) -> Result<serde_json::Value, String> {
+    autoclaw_oauth::start_oauth(vendor.as_deref().unwrap_or("zai"), &captcha_verify_param).await
+}
+
+#[tauri::command]
+async fn poll_autoclaw_oauth(flow_id: String) -> Result<serde_json::Value, String> {
+    autoclaw_oauth::poll_oauth(&flow_id)
+}
+
+#[tauri::command]
+async fn cancel_autoclaw_oauth(flow_id: String) -> Result<(), String> {
+    autoclaw_oauth::cancel_oauth(&flow_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn list_autoclaw_accounts(app: tauri::AppHandle) -> Result<Vec<persistence::AutoClawAccount>, String> {
+    persistence::list_autoclaw_accounts(app_data_of(&app))
+}
+
+#[tauri::command]
+fn save_autoclaw_account(
+    app: tauri::AppHandle,
+    account: persistence::AutoClawAccount,
+) -> Result<(), String> {
+    persistence::save_autoclaw_account(app_data_of(&app), &account)
+}
+
+#[tauri::command]
+fn delete_autoclaw_account(app: tauri::AppHandle, user_id: String) -> Result<bool, String> {
+    persistence::delete_autoclaw_account(app_data_of(&app), &user_id)
+}
+
 #[tauri::command]
 fn generate_device_mid() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -265,6 +310,13 @@ fn main() {
             export_router_json,
             query_balance,
             query_autoclaw_balance,
+            autoclaw_oauth_captcha_config,
+            start_autoclaw_oauth,
+            poll_autoclaw_oauth,
+            cancel_autoclaw_oauth,
+            list_autoclaw_accounts,
+            save_autoclaw_account,
+            delete_autoclaw_account,
             load_saved_config,
             save_saved_config,
             list_accounts,

@@ -10,6 +10,7 @@ releasing/updater.key
 # Local account store (JWT + device IDs) - khong bao gio commit
 zcode-claimer-config.json
 accounts.json
+autoclaw-accounts.json
 claim-history.json
 
 # updates/latest.json phai tracked de updater fetch duoc qua raw.githubusercontent

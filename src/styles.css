@@ -139,8 +139,6 @@ code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-siz
 .update-card .hint { color: var(--muted) !important; }
 .update-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .update-head svg { color: var(--accent); flex: none; }
-.version-line { margin: 2px 0 8px; font-size: 12.5px; color: var(--muted); }
-.version-line strong { color: var(--text); }
 .update-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .update-card progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accent); }
 .update-card progress[hidden] { display: none; }
@@ -152,9 +150,22 @@ code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-siz
   margin: 2px 0 10px;
 }
 .topbar h1 { font-size: 20px; margin: 0; }
-.subtitle { color: var(--muted); margin: 5px 0 0; font-size: 13px; }
 .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: none; margin-top: 4px; }
 .topbar-actions button { margin: 0; }
+/* Combobox chọn loại đăng nhập (ZCode / AutoClaw) đặt cạnh nút Đăng nhập */
+.login-picker { display: flex; gap: 8px; align-items: stretch; }
+.login-picker select {
+  padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit; font-size: 13.5px; font-weight: 600; color: var(--text);
+  background: var(--surface); cursor: pointer;
+}
+.login-picker select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .16);
+}
+.login-picker button { display: inline-flex; align-items: center; gap: 6px; }
 .status-line { font-size: 13px; color: var(--muted); margin: 0 0 14px; min-height: 0; white-space: pre-wrap; word-break: break-word; }
 .status-line:empty { display: none; }
 

@@ -1,6 +1,6 @@
 {
   "name": "zcode-claimer",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "private": true,
   "description": "Minimal Windows Tauri app: ZCode daily plan claim -> export router-compatible JSON",
   "type": "module",

@@ -75,7 +75,18 @@ function setStep(n) {
 }
 
 // ── Đăng nhập ZCode tự động: init -> mở browser -> poll ──
+// Combobox loại đăng nhập: ZCode (OAuth web, như cũ) hoặc AutoClaw
+// (đọc login AutoClaw desktop local, chỉ Quốc tế — Trung Quốc đã bỏ).
+function loginType() { return ($("loginType")?.value === "autoclaw") ? "autoclaw" : "zcode"; }
+function refreshLoginLabel() {
+  const el = $("btnLoginLabel");
+  if (el) el.textContent = loginType() === "autoclaw" ? "Đăng nhập AutoClaw" : "Đăng nhập ZCode";
+}
+$("loginType")?.addEventListener("change", refreshLoginLabel);
+refreshLoginLabel();
+
 $("btnLogin").onclick = async () => {
+  if (loginType() === "autoclaw") { await loginAutoclaw(); return; }
   if (loginTimer) { clearInterval(loginTimer); loginTimer = null; }
   $("loginStatus").textContent = "Đang khởi tạo đăng nhập...";
   let start;
@@ -244,6 +255,11 @@ function usageCell(a) {
 }
 
 function expiryCell(a) {
+  if (a.type === "autoclaw") {
+    const r = pointsCache.get(a.user_id);
+    const txt = r?.expiring?.text || (r?.expiring?.points != null ? fmtNum(r.expiring.points) + " điểm" : "");
+    return txt ? `<span title="${esc(txt)}">Sắp hết hạn: ${esc(txt)}</span>` : '<span class="meta">—</span>';
+  }
   const r = usageCache.get(a.user_id);
   if (!r || r.error) return '<span class="meta">—</span>';
   const times = [];
@@ -263,9 +279,17 @@ function expiryCell(a) {
 function renderSummary() {
   const el = $("accountsSummary");
   if (!el) return;
+  const zcodeAccts = accountsCache.filter((a) => a.type !== "autoclaw");
   const loaded = [...usageCache.values()].filter((r) => r && !r.error);
   const totalLeft = loaded.reduce((s, r) => s + (Number(r.total_remaining) || 0), 0);
-  el.textContent = `ZCode · ${accountsCache.length} tài khoản · Tổng còn ${fmtUnits(totalLeft)} token`;
+  let text = `ZCode · ${zcodeAccts.length} tài khoản · Tổng còn ${fmtUnits(totalLeft)} token`;
+  const acPoints = accountsCache
+    .filter((a) => a.type === "autoclaw")
+    .map((a) => pointsCache.get(a.user_id))
+    .filter((r) => r && !r.error && Number.isFinite(Number(r.available)))
+    .reduce((s, r) => s + Number(r.available), 0);
+  if (acPoints > 0) text += ` · AutoClaw: ${fmtNum(acPoints)} điểm`;
+  el.textContent = text;
 }
 
 // Popover chi tiết quota khi hover vào pill (plan/status/expires,
@@ -308,14 +332,31 @@ function showBalancePop(anchor, userId) {
 function hideBalancePop() { const pop = $("balancePop"); if (pop) pop.hidden = true; }
 
 function statusCell(a) {
+  if (a.type === "autoclaw") {
+    const r = pointsCache.get(a.user_id);
+    if (r?.error) return '<span class="tag expired">Lỗi số dư</span>';
+    if (r?.loading) return '<span class="tag unknown">Đang tải...</span>';
+    if (r) return '<span class="tag active">Sẵn sàng</span>';
+    return '<span class="tag unknown">Chưa xem điểm</span>';
+  }
   const r = usageCache.get(a.user_id);
   if (r?.error) return '<span class="tag expired">Lỗi số dư</span>';
   if (!a.jwt) return '<span class="tag unknown">Chưa có JWT</span>';
   if (usageLoading.has(a.user_id)) return '<span class="tag unknown">Đang tải...</span>';
+  if (!r) return '<span class="tag unknown">Chưa tải</span>';
+  if (!r.has_quota) return '<span class="tag unknown">Hết hạn mức</span>';
   return '<span class="tag active">Sẵn sàng</span>';
 }
 
 function actionsCell(a) {
+  if (a.type === "autoclaw") {
+    // AutoClaw không có JWT ZCode nên không Lãnh gói. Sửa email được
+    // (lưu vào autoclaw-accounts.json, không chạm accounts.json ZCode).
+    const viewBtn = `<button class="primary small" data-points-acct="${esc(a.user_id)}" type="button" title="Tải lại số điểm AutoClaw">Xem điểm</button>`;
+    const editBtn = `<button class="ghost small" data-edit-email="${esc(a.user_id)}" type="button" title="Sửa email hiển thị">Sửa email</button>`;
+    const deleteBtn = `<button class="ghost danger small" data-delete-acct="${esc(a.user_id)}" type="button" title="Xóa tài khoản AutoClaw này (token đã lưu cũng mất; login AutoClaw desktop không bị ảnh hưởng)">Xóa</button>`;
+    return `<span class="actions-cell">${viewBtn} ${editBtn} ${deleteBtn}</span>`;
+  }
   const hasJwt = !!(a.jwt && String(a.jwt).trim());
   const claimBtn = hasJwt
     ? `<button class="primary small" data-claim-acct="${esc(a.user_id)}" type="button" title="Xem các gói có thể lãnh của tài khoản này">Lãnh gói</button>`
@@ -356,7 +397,14 @@ function startEditEmail(userId) {
   const save = async () => {
     a.email = input.value.trim();
     if (userId === currentUserId) activeCfg.email = a.email;
-    try { await invoke("save_saved_config", { config: { ...a } }); } catch {}
+    if (a.type === "autoclaw") {
+      // Lưu email vào autoclaw-accounts.json (giữ nguyên token đã lưu).
+      try {
+        await invoke("save_autoclaw_account", { account: { user_id: acRawId(userId), user_name: a.username || "", email: a.email, token: a.autoclaw_token || "", refresh_token: a.autoclaw_refresh_token || "", device_id: a.autoclaw_device_id || "", expires_at: a.autoclaw_expires_at ?? null } });
+      } catch {}
+    } else {
+      try { await invoke("save_saved_config", { config: { ...a } }); } catch {}
+    }
     renderAccountsTable();
   };
   cell.querySelector("[data-save-email]").onclick = save;
@@ -373,6 +421,18 @@ async function deleteAccount(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
   if (!a) return;
   const label = displayName(a);
+  if (a.type === "autoclaw") {
+    // Xóa cả file autoclaw-accounts.json (nếu tài khoản này đã lưu);
+    // login AutoClaw desktop không bị ảnh hưởng.
+    if (!window.confirm(`Xóa tài khoản AutoClaw ${label}?\nToken đã lưu sẽ mất. Muốn dùng lại thì chọn AutoClaw rồi bấm Đăng nhập.`)) return;
+    try { await invoke("delete_autoclaw_account", { userId: acRawId(userId) }); } catch {}
+    accountsCache = accountsCache.filter((x) => x.user_id !== userId);
+    pointsCache.delete(userId);
+    renderAccountsTable();
+    const st = $("loginStatus");
+    if (st) st.textContent = `Đã xóa tài khoản AutoClaw ${label}.`;
+    return;
+  }
   if (!window.confirm(`Xóa tài khoản ${label}?\nJWT và device ID đã lưu sẽ mất. Muốn dùng lại phải đăng nhập lại.`)) return;
   try { await invoke("delete_account", { userId }); } catch {}
   accountsCache = accountsCache.filter((x) => x.user_id !== userId);
@@ -383,32 +443,26 @@ async function deleteAccount(userId) {
   if (st) st.textContent = `Đã xóa tài khoản ${label}.`;
 }
 
-function shortMid(mid) {
-  const m = String(mid || "").trim();
-  if (!m) return '<span class="meta">—</span>';
-  return `<span title="${esc(m)}">${esc(m.slice(0, 8))}…</span>`;
-}
-
 function renderAccountsTable() {
   const el = $("accountsList");
   if (!el) return;
   if (!accountsCache.length) {
-    el.innerHTML = '<p class="hint">Chưa có tài khoản nào. Bấm Đăng nhập ZCode để thêm tài khoản đầu tiên.</p>';
+    el.innerHTML = '<p class="hint">Chưa có tài khoản nào. Chọn loại rồi bấm Đăng nhập để thêm tài khoản đầu tiên.</p>';
     renderSummary();
     return;
   }
   const rows = accountsCache.map((a) => {
     const active = a.user_id === currentUserId;
+    const isAc = a.type === "autoclaw";
     return `<tr class="account-row ${active ? "is-active" : ""}" data-userid="${esc(a.user_id)}">
-      <td class="acct"><b>${esc(displayName(a))}</b>${active ? ' <span class="tag active">Đang dùng</span>' : ""}${a.email ? "" : ' <span class="tag pending">Chưa có email</span>'}<div class="meta">${esc(accountSub(a))}</div></td>
-      <td>${shortMid(a.device_mid)}</td>
-      <td>${usageCell(a)}</td>
+      <td class="acct"${isAc ? "" : ` title="Device ID: ${esc(a.device_mid || "")}"`}><b>${esc(displayName(a))}</b>${isAc ? ' <span class="tag">AutoClaw</span>' : ""}${active ? ' <span class="tag active">Đang dùng</span>' : ""}${!isAc && !a.email ? ' <span class="tag pending">Chưa có email</span>' : ""}<div class="meta">${esc(accountSub(a))}</div></td>
+      <td>${isAc ? pointsCell(a) : usageCell(a)}</td>
       <td>${expiryCell(a)}</td>
       <td>${statusCell(a)}</td>
       <td>${actionsCell(a)}</td>
     </tr>`;
   }).join("");
-  el.innerHTML = `<table class="accounts-table"><thead><tr><th class="acct">Tài khoản</th><th>Device ID</th><th>Quota</th><th>Hết hạn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = `<table class="accounts-table"><thead><tr><th class="acct">Tài khoản</th><th>Quota</th><th>Hết hạn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${rows}</tbody></table>`;
   renderSummary();
   document.querySelectorAll("[data-claim-acct]").forEach((btn) => {
     btn.onclick = () => openPlansForAccount(btn.dataset.claimAcct);
@@ -419,9 +473,16 @@ function renderAccountsTable() {
   document.querySelectorAll("[data-delete-acct]").forEach((btn) => {
     btn.onclick = () => deleteAccount(btn.dataset.deleteAcct);
   });
+  document.querySelectorAll("[data-points-acct]").forEach((btn) => {
+    btn.onclick = () => queryPointsOnce(btn.dataset.pointsAcct);
+  });
   document.querySelectorAll(".account-row").forEach((tr) => {
     tr.onclick = (e) => {
       if (e.target.closest("button")) return;
+      // Dòng AutoClaw không chuyển tài khoản ZCode đang dùng
+      // (nó không có JWT/device ZCode).
+      const a = accountsCache.find((x) => x.user_id === tr.dataset.userid);
+      if (a?.type === "autoclaw") return;
       switchAccount(tr.dataset.userid);
     };
   });
@@ -598,36 +659,216 @@ function retryHint(code, failureEndsAt) {
 }
 
 $("btnRefreshAll")?.addEventListener("click", async () => {
-  for (const a of accountsCache) { if (a.jwt) await queryUsageOnce(a.user_id); }
+  for (const a of accountsCache) {
+    if (a.type === "autoclaw") await queryPointsOnce(a.user_id);
+    else if (a.jwt) await queryUsageOnce(a.user_id);
+  }
 });
 
-// ── AutoClaw (điểm, giống ZCode nhưng đơn vị điểm) ──
+// ── AutoClaw: 1 tài khoản = 1 dòng trong bảng (điểm, chỉ Quốc tế) ──
+// Đăng nhập AutoClaw Quốc tế (OAuth Zai):
+//   captcha-config -> slider captcha -> oauth-url -> mở trình duyệt
+//   -> callback localhost:<port đăng ký> -> oauth-login -> token.
+// Token lưu vào autoclaw-accounts.json (file riêng, không trộn accounts.json
+// của ZCode) nên mở app lại vẫn còn tài khoản. Tài khoản thêm bằng đường
+// desktop-import (đọc login AutoClaw desktop) thì chỉ sống trong phiên.
+const pointsCache = new Map(); // user_id -> AutoClawBalanceResult | { error }
+let autoclawLoginTimer = null;
+let autoclawLoginFlowId = null;
 function fmtNum(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("vi-VN");
 }
-$("btnAutoclaw")?.addEventListener("click", async () => {
-  const box = $("autoclawResult");
-  box.innerHTML = '<p class="hint">Đang tải điểm AutoClaw…</p>';
-  const region = ($("autoclawRegion") || {}).value || "intl";
+// user_id trong file lưu là id thô; trên giao diện thêm tiền tố autoclaw:
+// để không đụng user_id ZCode (cùng 1 tài khoản Zhipu có thể vừa ZCode vừa AutoClaw).
+function acRawId(userId) { return String(userId || "").replace(/^autoclaw:/, ""); }
+async function queryPointsOnce(userId) {
+  const a = accountsCache.find((x) => x.user_id === userId);
+  if (!a || a.type !== "autoclaw") return;
+  pointsCache.set(userId, { loading: true });
+  renderAccountsTable();
   try {
-    const r = await invoke("query_autoclaw_balance", { token: "", refreshToken: null, deviceId: null, region });
-    const avail = r.available ?? 0;
-    let html = `<p class="quota-big">${fmtNum(avail)} điểm</p>`;
-    if (Array.isArray(r.wallets) && r.wallets.length) {
-      html += '<table class="acc-table"><thead><tr><th>Ví điểm</th><th>Số điểm</th></tr></thead><tbody>';
-      for (const w of r.wallets) html += `<tr><td>${esc(w.show_name || w.bucket_id || "Điểm")}</td><td>${fmtNum(w.remaining_points)}</td></tr>`;
-      html += "</tbody></table>";
-    }
-    if (r.expiring && r.expiring.points != null) html += `<p class="hint">Sắp hết hạn: ${esc(r.expiring.text || fmtNum(r.expiring.points) + " điểm")}</p>`;
-    if (r.subscription && r.subscription.planName) html += `<p class="hint">Gói: ${esc(r.subscription.planName)} · ${esc(r.subscription.status || "")}</p>`;
-    if (r.raw && r.raw.subscriptionError) html += `<p class="hint">Không tải được gói: ${esc(String(r.raw.subscriptionError))}</p>`;
-    box.innerHTML = html;
+    // Ưu tiên token đã lưu (OAuth); trống thì đọc login desktop (fallback).
+    const r = await invoke("query_autoclaw_balance", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl" });
+    pointsCache.set(userId, r);
   } catch (e) {
-    box.innerHTML = `<p class="hint">Lỗi tải điểm AutoClaw: ${esc(String(e))} (thử đổi vùng Quốc tế/Trung Quốc nếu đăng nhập AutoClaw desktop ở vùng kia)</p>`;
+    pointsCache.set(userId, { error: String(e) });
   }
-});
+  renderAccountsTable();
+}
+// Đưa credential OAuth vào bảng + lưu file (creds: {token, refreshToken?,
+// userName?, userId, deviceId, expiresAt?} từ Rust oauth-login).
+async function upsertAutoclawAccount(creds) {
+  const rawId = (creds.userId && String(creds.userId).trim()) || "oauth";
+  const userId = "autoclaw:" + rawId;
+  let a = accountsCache.find((x) => x.user_id === userId);
+  const record = {
+    user_id: rawId,
+    user_name: (creds.userName || "").trim(),
+    email: a?.email || "",
+    token: creds.token || "",
+    refresh_token: creds.refreshToken || "",
+    device_id: creds.deviceId || "",
+    expires_at: creds.expiresAt ?? null,
+  };
+  if (!a) {
+    a = { type: "autoclaw", user_id: userId, username: record.user_name, email: "", device_mid: "", jwt: "", zai_business_token: "", autoclaw_token: record.token, autoclaw_refresh_token: record.refresh_token, autoclaw_device_id: record.device_id, autoclaw_expires_at: record.expires_at };
+    accountsCache.push(a);
+  } else {
+    a.type = "autoclaw";
+    if (record.user_name) a.username = record.user_name;
+    a.autoclaw_token = record.token;
+    a.autoclaw_refresh_token = record.refresh_token;
+    a.autoclaw_device_id = record.device_id;
+    a.autoclaw_expires_at = record.expires_at;
+  }
+  try { await invoke("save_autoclaw_account", { account: record }); } catch {}
+  await queryPointsOnce(userId);
+  return a;
+}
+// Đăng nhập AutoClaw Quốc tế (OAuth Zai):
+// captcha -> lấy auth URL -> mở trình duyệt -> poll chờ callback.
+async function loginAutoclaw() {
+  if (autoclawLoginTimer) { clearInterval(autoclawLoginTimer); autoclawLoginTimer = null; }
+  if (autoclawLoginFlowId) {
+    try { await invoke("cancel_autoclaw_oauth", { flowId: autoclawLoginFlowId }); } catch {}
+    autoclawLoginFlowId = null;
+  }
+  $("loginStatus").textContent = "Đang lấy cấu hình captcha AutoClaw Quốc tế...";
+  let config;
+  try {
+    config = await invoke("autoclaw_oauth_captcha_config");
+  } catch (e) {
+    $("loginStatus").textContent = "Lấy cấu hình captcha lỗi: " + e;
+    return;
+  }
+  if (!config || !config.enabled) {
+    // Quốc tế lẽ ra luôn enabled; nếu upstream nói không cần captcha thì
+    // quay về đường đọc login desktop (không cần đăng nhập lại).
+    $("loginStatus").textContent = "AutoClaw Quốc tế không yêu cầu captcha — đang đọc login desktop...";
+    await loginAutoclawDesktop();
+    return;
+  }
+  $("loginStatus").textContent = "Kéo slider để hoàn thành captcha...";
+  try {
+    await window.wbAliyunCaptcha.solve(
+      { region: config.region, prefix: config.prefix, sceneId: config.sceneId },
+      async (verifyParam) => {
+        const start = await invoke("start_autoclaw_oauth", { vendor: "zai", captchaVerifyParam: verifyParam });
+        autoclawLoginFlowId = start.flow_id;
+        try {
+          await openUrl(start.auth_url);
+        } catch (e) {
+          $("loginStatus").textContent = "Mở trình duyệt thất bại: " + e + " — hãy copy địa chỉ này mở tay: " + start.auth_url;
+        }
+        $("loginStatus").textContent = "Đã mở trình duyệt — hãy đăng nhập Zai trên web AutoClaw, rồi quay lại app. Đang chờ xác thực...";
+        return { captchaResult: true, bizResult: true };
+      }
+    );
+  } catch (e) {
+    if (e?.name === "CaptchaCancelledError") { $("loginStatus").textContent = "Đã hủy captcha"; return; }
+    $("loginStatus").textContent = "Lỗi captcha: " + (e?.message || e);
+    return;
+  }
+  if (!autoclawLoginFlowId) {
+    $("loginStatus").textContent = "Không khởi tạo được phiên đăng nhập AutoClaw.";
+    return;
+  }
+  const flowId = autoclawLoginFlowId;
+  const deadline = Date.now() + 5 * 60 * 1000;
+  autoclawLoginTimer = setInterval(async () => {
+    if (Date.now() > deadline) {
+      clearInterval(autoclawLoginTimer);
+      autoclawLoginTimer = null;
+      try { await invoke("cancel_autoclaw_oauth", { flowId }); } catch {}
+      autoclawLoginFlowId = null;
+      $("loginStatus").textContent = "Hết hạn đăng nhập AutoClaw (5 phút). Bấm Đăng nhập lại.";
+      return;
+    }
+    let res;
+    try {
+      res = await invoke("poll_autoclaw_oauth", { flowId });
+    } catch (e) {
+      clearInterval(autoclawLoginTimer);
+      autoclawLoginTimer = null;
+      autoclawLoginFlowId = null;
+      $("loginStatus").textContent = "Đăng nhập AutoClaw thất bại: " + e;
+      return;
+    }
+    if (res?.status === "pending") {
+      if (res.hint) $("loginStatus").textContent = res.hint;
+      return;
+    }
+    clearInterval(autoclawLoginTimer);
+    autoclawLoginTimer = null;
+    autoclawLoginFlowId = null;
+    if (res?.status === "ready" && res?.credentials) {
+      const a = await upsertAutoclawAccount(res.credentials);
+      $("loginStatus").textContent = `Đăng nhập AutoClaw thành công${a.email ? " (" + a.email + ")" : ""}. Bấm Xem điểm ở dòng tài khoản để tải lại điểm.`;
+    } else {
+      $("loginStatus").textContent = "Đăng nhập AutoClaw thất bại: " + (res?.message || JSON.stringify(res));
+    }
+  }, 1000);
+}
+// Đường cũ: đọc login AutoClaw desktop local rồi thêm 1 dòng (chỉ trong phiên).
+// Dùng khi upstream nói không cần captcha, hoặc làm fallback.
+async function loginAutoclawDesktop() {
+  $("loginStatus").textContent = "Đang đọc login AutoClaw desktop (chỉ Quốc tế)...";
+  let r;
+  try {
+    r = await invoke("query_autoclaw_balance", { token: "", refreshToken: null, deviceId: null, region: "intl" });
+  } catch (e) {
+    $("loginStatus").textContent = "Đăng nhập AutoClaw thất bại: " + e;
+    return;
+  }
+  const userId = "autoclaw:" + ((r.user_id && String(r.user_id).trim()) || "desktop");
+  let a = accountsCache.find((x) => x.user_id === userId);
+  if (!a) {
+    a = { type: "autoclaw", user_id: userId, username: "", email: (r.email || "").trim(), device_mid: "", jwt: "", zai_business_token: "", autoclaw_token: "", autoclaw_refresh_token: "", autoclaw_device_id: "", autoclaw_expires_at: null };
+    accountsCache.push(a);
+  } else {
+    a.type = "autoclaw";
+    if (r.email) a.email = String(r.email).trim();
+  }
+  pointsCache.set(userId, r);
+  renderAccountsTable();
+  $("loginStatus").textContent = `Đã thêm tài khoản AutoClaw${a.email ? " (" + a.email + ")" : ""} — ${fmtNum(r.available ?? 0)} điểm. Tài khoản này chỉ sống trong phiên (đọc từ login desktop), mở app lại thì đăng nhập lại.`;
+}
+// Nạp các tài khoản AutoClaw đã lưu (OAuth) khi mở app.
+async function loadAutoclawAccounts() {
+  let list;
+  try {
+    list = await invoke("list_autoclaw_accounts");
+  } catch {
+    return;
+  }
+  if (!Array.isArray(list)) return;
+  for (const rec of list) {
+    const rawId = (rec.user_id && String(rec.user_id).trim()) || "";
+    if (!rawId) continue;
+    const userId = "autoclaw:" + rawId;
+    if (accountsCache.some((x) => x.user_id === userId)) continue;
+    accountsCache.push({ type: "autoclaw", user_id: userId, username: (rec.user_name || "").trim(), email: (rec.email || "").trim(), device_mid: "", jwt: "", zai_business_token: "", autoclaw_token: (rec.token || "").trim(), autoclaw_refresh_token: (rec.refresh_token || "").trim(), autoclaw_device_id: (rec.device_id || "").trim(), autoclaw_expires_at: rec.expires_at ?? null });
+  }
+  renderAccountsTable();
+  for (const rec of list) {
+    const rawId = (rec.user_id && String(rec.user_id).trim()) || "";
+    if (rawId) await queryPointsOnce("autoclaw:" + rawId);
+  }
+}
+function pointsCell(a) {
+  const r = pointsCache.get(a.user_id);
+  if (r?.loading) return '<span class="usage-cell muted">Đang tải điểm...</span>';
+  if (!r) return '<span class="usage-cell muted">Chưa xem điểm</span>';
+  if (r.error) return `<span class="usage-cell err" title="${esc(r.error)}">Lỗi số dư</span>`;
+  const avail = Number(r.available);
+  const wallets = Array.isArray(r.wallets) ? r.wallets : [];
+  const names = wallets.slice(0, 2).map((w) => w.show_name || w.bucket_id || "Điểm").join(" · ");
+  return `<span class="balance-pill" title="${esc(wallets.map((w) => `${w.show_name || w.bucket_id || "Điểm"}: ${fmtNum(w.remaining_points)} điểm`).join("\n") || "AutoClaw")}">
+    <span class="bp-top"><span class="bp-name">${esc(names || "Điểm")}</span><span class="bp-nums">${fmtNum(Number.isFinite(avail) ? avail : 0)} điểm</span></span>
+  </span>`;
+}
 
 // ── Persistence Rust thay localStorage JWT ──
 // Ưu tiên load_saved_config → save_saved_config. Chỉ khi Tauri không sẵn sàng
@@ -651,7 +892,7 @@ async function isTauri() {
 
 // Phiên bản hiện tại hiển thị trong thẻ Cập nhật. App thật lấy đúng version của
 // bản build qua getVersion(); trình duyệt thường/demo thì giữ chữ v0.1.8 ghi sẵn.
-let appVersionText = "v0.1.9";
+let appVersionText = "v0.1.11";
 async function showAppVersion() {
   const el = $("appVersion");
   try {
@@ -716,8 +957,19 @@ function seedDemo() {
     { user_id: "11111111-1111-4111-8111-111111111111", username: "demo-zcode-01", email: "demo01@example.com", device_mid: "22222222-2222-4222-8222-222222222222", jwt: "demo", zai_business_token: "" },
     { user_id: "33333333-3333-4333-8333-333333333333", username: "demo-zcode-02", email: "", device_mid: "44444444-4444-4444-8444-444444444444", jwt: "demo", zai_business_token: "" },
     { user_id: "55555555-5555-4555-8555-555555555555", username: "demo-zcode-03", email: "demo03@example.com", device_mid: "66666666-6666-4666-8666-666666666666", jwt: "demo", zai_business_token: "" },
+    { type: "autoclaw", user_id: "autoclaw:demo", username: "", email: "demo-autoclaw@example.com", device_mid: "", jwt: "", zai_business_token: "" },
   ];
   currentUserId = accountsCache[0].user_id;
+  pointsCache.set("autoclaw:demo", {
+    available: 125000, unit: "Điểm",
+    wallets: [
+      { bucket_id: "daily", show_name: "Điểm tặng", remaining_points: 5000, balance_view: "5000" },
+      { bucket_id: "monthly", show_name: "Điểm gói", remaining_points: 120000, balance_view: "120000" },
+    ],
+    subscription: { planName: "AutoClaw Pro", status: "active" },
+    expiring: { points: 5000, text: "5000 điểm" },
+    raw: {}, user_id: "demo", email: "demo-autoclaw@example.com",
+  });
   usageCache.set(accountsCache[0].user_id, {
     total_remaining: 3000000, total_used: 2000000, total_granted: 5000000, has_quota: true,
     balances: [
@@ -749,6 +1001,7 @@ function seedDemo() {
 isTauri().then(() => {
   if (new URLSearchParams(location.search).has("demo")) { seedDemo(); return; }
   loadAccounts();
+  loadAutoclawAccounts();
   // Auto-check update khi mở app (silent, không popup dialog — dialog:false trong tauri.conf.json)
   checkForUpdates(false);
 });
