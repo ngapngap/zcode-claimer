@@ -6,6 +6,7 @@ mod autoclaw_checkin;
 mod autoclaw_credentials;
 mod autoclaw_crypto;
 mod autoclaw_oauth;
+mod autoclaw_refresh;
 mod balance;
 mod captcha_config;
 mod claim;
@@ -92,18 +93,57 @@ async fn poll_zcode_login(
 }
 
 #[tauri::command]
-async fn preview_plans(jwt: String, device_mid: String) -> Result<PreviewOutcome, String> {
-    claim::preview(&jwt, &device_mid).await.map_err(|e| e.to_string())
+async fn preview_plans(jwt: String, device_mid: String, user_id: String) -> Result<serde_json::Value, String> {
+    let outcome = claim::preview(&jwt, &device_mid).await.map_err(|e| e.to_string())?;
+    let (plans, deployed) = match outcome {
+        PreviewOutcome::NotDeployed => (Vec::new(), false),
+        PreviewOutcome::Plans(v) if !v.is_empty() => (v, true),
+        // Empty preview may simply mean the account was not registered as
+        // active today (eligibility gate in activation.rs). Report
+        // app_launch / app_daily_active, then preview once more, like
+        // Agent2API zcode_claim::preview. Failure to report only logs in
+        // the response fields — it does not fail this preview.
+        PreviewOutcome::Plans(_) => {
+            let (activated, activation_error) = match activation::report(&user_id, &device_mid).await {
+                Ok(()) => (Some(true), None),
+                Err(e) => (Some(false), Some(e)),
+            };
+            let (plans, deployed) = match claim::preview(&jwt, &device_mid).await {
+                Ok(PreviewOutcome::NotDeployed) => (Vec::new(), false),
+                Ok(PreviewOutcome::Plans(p)) => (p, true),
+                Err(_) => (Vec::new(), true),
+            };
+            return Ok(serde_json::json!({
+                "plans": plans,
+                "deployed": deployed,
+                "activated": activated,
+                "activationError": activation_error,
+            }));
+        }
+    };
+    Ok(serde_json::json!({
+        "plans": plans,
+        "deployed": deployed,
+        "activated": null,
+        "activationError": null,
+    }))
 }
 
 #[tauri::command]
 async fn claim_plan(
     jwt: String,
     device_mid: String,
+    user_id: String,
     plan_id: String,
     captcha_verify_param: String,
     captcha_region: String,
 ) -> Result<ClaimOutcome, String> {
+    // Giai quyen m02612: bao cao kich hoat truoc khi claim (cung nhu
+    // Agent2API zcode_claim::claim_plan). Loi bao cao khong chan claim.
+    match activation::report(&user_id, &device_mid).await {
+        Ok(()) => {}
+        Err(_) => {}
+    }
     claim::claim(
         &jwt,
         &device_mid,
@@ -121,11 +161,83 @@ async fn get_captcha_config() -> Result<Option<CaptchaConfig>, String> {
 }
 
 #[tauri::command]
-async fn report_activation(jwt: String, device_mid: String) -> Result<(), String> {
-    activation::report(&jwt, &device_mid).await.map_err(|e| e.to_string())
+async fn report_activation(user_id: String, device_mid: String) -> Result<(), String> {
+    activation::report(&user_id, &device_mid).await.map_err(|e| e.to_string())
 }
 
 pub type BalanceResult = balance::BalanceResult;
+
+/// Persist buyer token mới sau refresh vào autoclaw-accounts.json của app
+/// (KHÔNG ghi đè auth.json của desktop — sẽ phá login AutoClaw desktop +
+/// xung đột luân phiên token).
+/// - `user_id` (id THÔ không prefix, do frontend truyền) phải có; không có
+///   thì chỉ trả `_refreshed` cho frontend tự lưu (đường local/env).
+/// - Tài khoản OAuth (`kind = Manual` tương đương) mới persist
+///   (Agent2API `persistRefresh=true`); credential đọc từ login desktop
+///   (file) khôngpersist (Agent2API `persistRefresh=false` — đọc là đủ,
+///   desktop tự giữ token của nó).
+/// - Token đổi thì ghi file + kèm `_refreshed {token, refresh_token, expires_at}`
+///   để frontend đồng bộ vào phiên hiện tại.
+fn persist_refreshed(
+    app: &tauri::AppHandle,
+    credentials: &autoclaw_credentials::AutoClawCredentials,
+    orig_token: &str,
+    user_id: Option<&str>,
+    result: &mut serde_json::Value,
+) -> Result<(), String> {
+    if credentials.token == orig_token {
+        return Ok(());
+    }
+    let refreshed = serde_json::json!({
+        "token": credentials.token,
+        "refresh_token": credentials.refresh_token,
+        "expires_at": credentials.expires_at,
+    });
+    let Some(user_id) = user_id.map(str::trim).filter(|id| !id.is_empty()) else {
+        attach(result, &refreshed);
+        return Ok(());
+    };
+    // Chỉ persist khi file autoclaw-accounts.json đã có dòng này (OAuth).
+    // Không có dòng (đọc từ desktop/env) -> không ghi đè, chỉ kèm _refreshed.
+    let dir = app_data_of(app);
+    let existing = persistence::list_autoclaw_accounts(dir);
+    let has_account = existing
+        .as_ref()
+        .map(|list| list.iter().any(|a| a.user_id.trim() == user_id))
+        .unwrap_or(false);
+    if has_account {
+        let user_name = existing
+            .as_ref()
+            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id))
+            .map(|a| a.user_name.clone())
+            .unwrap_or_default();
+        let email = existing
+            .as_ref()
+            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id))
+            .map(|a| a.email.clone())
+            .unwrap_or_else(|| credentials.email.clone());
+        let record = persistence::AutoClawAccount {
+            user_id: user_id.to_string(),
+            user_name,
+            email,
+            token: credentials.token.clone(),
+            refresh_token: credentials.refresh_token.clone(),
+            device_id: credentials.device_id.clone(),
+            expires_at: credentials.expires_at,
+        };
+        let _ = persistence::save_autoclaw_account(dir, &record);
+    }
+    attach(result, &refreshed);
+    Ok(())
+}
+
+fn attach(result: &mut serde_json::Value, refreshed: &serde_json::Value) {
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("_refreshed".to_string(), refreshed.clone());
+    } else {
+        *result = serde_json::json!({ "value": result.clone(), "_refreshed": refreshed });
+    }
+}
 
 #[tauri::command]
 async fn query_balance(jwt: String, device_mid: String) -> Result<BalanceResult, String> {
@@ -134,22 +246,51 @@ async fn query_balance(jwt: String, device_mid: String) -> Result<BalanceResult,
 
 #[tauri::command]
 async fn query_autoclaw_balance(
+    app: tauri::AppHandle,
     token: String,
     refresh_token: Option<String>,
     device_id: Option<String>,
     region: Option<String>,
-) -> Result<autoclaw_balance::AutoClawBalanceResult, String> {
+    user_id: Option<String>,
+) -> Result<serde_json::Value, String> {
     let region = match region.as_deref() {
         Some("intl") => autoclaw_credentials::Region::Intl,
         _ => autoclaw_credentials::Region::Cn,
     };
-    let credentials = if token.trim().is_empty() {
+    let mut credentials = if token.trim().is_empty() {
         autoclaw_credentials::local_credentials(region)
             .or_else(|_| autoclaw_credentials::env_credentials(region).ok_or_else(|| "Khong thay dang nhap AutoClaw".to_string()))
     } else {
         autoclaw_credentials::credentials_from_token(region, &token, refresh_token.as_deref().unwrap_or(""), device_id.as_deref().unwrap_or(""))
     }?;
-    autoclaw_balance::query_balance(&credentials).await
+    // m02688: token AutoClaw hết hạn sau ~1 ngày. Tự refresh access token
+    // từ refresh token trước khi gọi balance (ensure_fresh), và nếu balance
+    // vẫn báo hết hạn/auth (401/code 410000/400000) thì refresh bắt buộc
+    // rồi gọi lại 1 lần (refresh_access_token của Agent2API adapter.rs).
+    // Chỉ refresh khi có refresh_token (OAuth); tài khoản đọc từ login
+    // desktop không có refresh_token thì giữ nguyên hành vi cũ.
+    let orig_token = credentials.token.clone();
+    match autoclaw_refresh::ensure_fresh(&credentials).await {
+        Ok(next) => credentials = next,
+        Err(e) => return Err(e),
+    }
+    let mut result = autoclaw_balance::query_balance(&credentials).await;
+    if result.is_err() && credentials.token != orig_token && autoclaw_refresh::can_refresh(&credentials) {
+        // Token cũ vừa bị thay bằng ensure_fresh nhưng vẫn lỗi -> force refresh từ refresh trong credential mới (nếu có)
+        if let Ok(next) = autoclaw_refresh::refresh(&credentials, true).await {
+            credentials = next;
+            result = autoclaw_balance::query_balance(&credentials).await;
+        }
+    } else if result.is_err() && autoclaw_refresh::can_refresh(&credentials) {
+        // Lỗi do token gốc hỏng (vd vừa hết hạn trong lúc chạy): ép refresh 1 lần rồi gọi lại
+        if let Ok(next) = autoclaw_refresh::refresh(&credentials, true).await {
+            credentials = next;
+            result = autoclaw_balance::query_balance(&credentials).await;
+        }
+    }
+    let mut balance = result?;
+    persist_refreshed(&app, &credentials, &orig_token, user_id.as_deref(), &mut balance)?;
+    Ok(balance)
 }
 
 /// Diem danh hang ngay AutoClaw (task daily_signin + kiem tra qua hoat dong).
@@ -157,23 +298,39 @@ async fn query_autoclaw_balance(
 /// `grant_date` trong so diem (xem autoclaw_checkin.rs).
 #[tauri::command]
 async fn autoclaw_daily_checkin(
+    app: tauri::AppHandle,
     token: String,
     refresh_token: Option<String>,
     device_id: Option<String>,
     region: Option<String>,
+    user_id: Option<String>,
     today: String,
 ) -> Result<serde_json::Value, String> {
     let region = match region.as_deref() {
         Some("intl") => autoclaw_credentials::Region::Intl,
         _ => autoclaw_credentials::Region::Cn,
     };
-    let credentials = if token.trim().is_empty() {
+    let mut credentials = if token.trim().is_empty() {
         autoclaw_credentials::local_credentials(region)
             .or_else(|_| autoclaw_credentials::env_credentials(region).ok_or_else(|| "Khong thay dang nhap AutoClaw".to_string()))
     } else {
         autoclaw_credentials::credentials_from_token(region, &token, refresh_token.as_deref().unwrap_or(""), device_id.as_deref().unwrap_or(""))
     }?;
-    autoclaw_checkin::daily_checkin(&credentials, &today).await
+    let orig_token = credentials.token.clone();
+    match autoclaw_refresh::ensure_fresh(&credentials).await {
+        Ok(next) => credentials = next,
+        Err(e) => return Err(e),
+    }
+    let mut result = autoclaw_checkin::daily_checkin(&credentials, &today).await;
+    if result.is_err() && autoclaw_refresh::can_refresh(&credentials) {
+        if let Ok(next) = autoclaw_refresh::refresh(&credentials, true).await {
+            credentials = next;
+            result = autoclaw_checkin::daily_checkin(&credentials, &today).await;
+        }
+    }
+    let mut result = result?;
+    persist_refreshed(&app, &credentials, &orig_token, user_id.as_deref(), &mut result)?;
+    Ok(result)
 }
 
 // ── AutoClaw Quoc te OAuth login ──

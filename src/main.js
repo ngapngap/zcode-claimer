@@ -612,12 +612,18 @@ function openPlansDialog(a) {
   $("btnClosePlans").onclick = () => { dlg.hidden = true; };
   dlg.onclick = (e) => { if (e.target === dlg) dlg.hidden = true; };
   // preview không captcha nên gọi thẳng
+  // Backend (m02612): preview_plans(jwt, device_mid, user_id) -> {plans, deployed, activated, activationError}
+  // - preview rỗng lần 1 -> tự báo cáo app_launch/app_daily_active rồi preview lại 1 lần
+  // - report lỗi chỉ ghi vào activated/activationError, không chặn preview
   (async () => {
     const mid = (a.device_mid || "").trim() || await ensureMid();
     try {
-      const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid });
-      if (result?.NotDeployed) { $("plansDialogBody").innerHTML = '<p class="hint">Hoạt động chưa ra mắt (404) — chờ mở bán</p>'; return; }
-      const plans = result?.Plans || [];
+      const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid, userId: a.user_id || "" });
+      if (result?.deployed === false) { $("plansDialogBody").innerHTML = '<p class="hint">Hoạt động chưa ra mắt (404) — chờ mở bán</p>'; return; }
+      const plans = result?.plans || [];
+      if (result?.activationError) {
+        $("plansDialogResult").textContent = `Báo cáo kích hoạt (app_daily_active) lỗi: ${result.activationError} — đã thử preview lại`;
+      }
       if (!plans.length) { $("plansDialogBody").innerHTML = '<p class="hint">Không có gói nào hôm nay</p>'; return; }
       let dialogPlanId = null;
       $("plansDialogBody").innerHTML = plans.map((p) =>
@@ -657,7 +663,7 @@ function openPlansDialog(a) {
         if (!dialogPlanId) { $("plansDialogResult").textContent = "Chưa chọn gói"; return; }
         $("plansDialogResult").textContent = "Đang nhận...";
         try {
-          const result = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, planId: dialogPlanId, captchaVerifyParam, captchaRegion });
+          const result = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, userId: a.user_id || "", planId: dialogPlanId, captchaVerifyParam, captchaRegion });
           if (result?.Claimed) {
             $("plansDialogResult").textContent = "Đã nhận: " + result.Claimed.plan_id;
             setStep(3);
@@ -739,9 +745,9 @@ async function claimAccountOnce(a) {
     return { planId: "zcode-v3-start-plan-0817", demo: true };
   }
   const mid = (a.device_mid || "").trim() || await ensureMid();
-  const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid });
-  if (result?.NotDeployed) throw new Error("Hoạt động chưa ra mắt (404) — chờ mở bán");
-  const plans = result?.Plans || [];
+  const result = await invoke("preview_plans", { jwt: a.jwt, deviceMid: mid, userId: a.user_id || "" });
+  if (result?.deployed === false) throw new Error("Hoạt động chưa ra mắt (404) — chờ mở bán");
+  const plans = result?.plans || [];
   if (!plans.length) throw new Error("Không có gói nào hôm nay");
   const plan = plans[0];
   let config;
@@ -761,7 +767,7 @@ async function claimAccountOnce(a) {
       throw new Error("Lỗi captcha: " + (e?.message || e));
     }
   }
-  const res = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, planId: plan.plan_id, captchaVerifyParam, captchaRegion });
+  const res = await invoke("claim_plan", { jwt: a.jwt, deviceMid: mid, userId: a.user_id || "", planId: plan.plan_id, captchaVerifyParam, captchaRegion });
   if (res?.Claimed) {
     try { await invoke("record_claim_history", { planId: res.Claimed.plan_id, date: new Date().toISOString().slice(0, 10), outcome: "claimed", code: 0, message: "", failureEndsAt: null }); } catch {}
     setStep(3);
@@ -863,27 +869,26 @@ function acRawId(userId) { return String(userId || "").replace(/^autoclaw:/, "")
 async function queryPointsOnce(userId) {
   const a = accountsCache.find((x) => x.user_id === userId);
   if (!a || a.type !== "autoclaw") return;
-  // Token đã hết hạn thì không gọi API nữa (tránh lỗi chung "Lỗi số dư"):
-  // expires_at lưu theo ms (Rust: exp * 1000); null/không phải số = chưa
-  // biết hạn, cứ gọi như cũ. Backend không tự refresh token nên chặn ở đây
-  // không làm mất đường refresh nào.
-  // CHÚ Ý: Number(null) === 0 (không phải NaN) nên KHÔNG được Number() trực
-  // tiếp — null mà lọt vào đây sẽ bị coi là hết hạn từ epoch, tài khoản vừa
-  // đăng nhập xong đã báo "Hết hạn đăng nhập" dù token còn mới (token Zai
-  // không có claim exp nên Rust không trả expiresAt).
-  const rawExp = a.autoclaw_expires_at;
-  const expMs = (rawExp === null || rawExp === undefined || rawExp === "") ? NaN : Number(rawExp);
-  if (Number.isFinite(expMs) && expMs > 0 && Date.now() > expMs) {
-    pointsCache.set(userId, { expired: true });
-    renderAccountsTable();
-    return;
-  }
   pointsCache.set(userId, { loading: true });
   renderAccountsTable();
   try {
     // Ưu tiên token đã lưu (OAuth); trống thì đọc login desktop (fallback).
-    const r = await invoke("query_autoclaw_balance", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl" });
+    // Token AutoClaw hết hạn sau ~1 ngày: backend tự refresh từ Ủy quyền
+    // (refresh_token) trước/sau khi gọi balance (xem autoclaw_refresh.rs),
+    // nên KHÔNG chặn ở đây nữa — để token hết hạn đi vào backend để refresh.
+    // Hạn (expires_at theo ms, Rust: exp * 1000) chỉ để hiển thị trạng thái
+    // trong cột Trạng thái, không chặn gọi API.
+    const r = await invoke("query_autoclaw_balance", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl", userId: acRawId(userId) });
     pointsCache.set(userId, r);
+    // Backend có thể đã refresh access token mới (hết hạn/~1 ngày): đồng bộ
+    // lại vào tài khoản đã lưu để lần mở app sau dùng token mới ngay, và giữ
+    // token/refreshToken mới trong phiên cho lần gọi tiếp theo.
+    if (r?._refreshed) {
+      if (r._refreshed.token) a.autoclaw_token = r._refreshed.token;
+      if (r._refreshed.refresh_token) a.autoclaw_refresh_token = r._refreshed.refresh_token;
+      if (r._refreshed.expires_at != null) a.autoclaw_expires_at = r._refreshed.expires_at;
+      try { await invoke("save_autoclaw_account", { account: { user_id: acRawId(userId), user_name: a.username || "", email: a.email || "", token: a.autoclaw_token || "", refresh_token: a.autoclaw_refresh_token || "", device_id: a.autoclaw_device_id || "", expires_at: a.autoclaw_expires_at ?? null } }); } catch {}
+    }
   } catch (e) {
     pointsCache.set(userId, { error: String(e) });
   }
@@ -924,8 +929,16 @@ async function checkinAutoclawOnce(userId) {
   renderAccountsTable();
   $("loginStatus").textContent = "Đang điểm danh...";
   try {
-    const res = await invoke("autoclaw_daily_checkin", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl", today: beijingToday() });
+    const res = await invoke("autoclaw_daily_checkin", { token: a.autoclaw_token || "", refreshToken: a.autoclaw_refresh_token || null, deviceId: a.autoclaw_device_id || null, region: "intl", userId: acRawId(userId), today: beijingToday() });
     checkinRunning.delete(userId);
+    // Backend tự refresh access token hết hạn (m02688): đồng bộ token mới
+    // vào tài khoản đã lưu để lần mở app sau không cần login lại.
+    if (res?._refreshed) {
+      if (res._refreshed.token) a.autoclaw_token = res._refreshed.token;
+      if (res._refreshed.refresh_token) a.autoclaw_refresh_token = res._refreshed.refresh_token;
+      if (res._refreshed.expires_at != null) a.autoclaw_expires_at = res._refreshed.expires_at;
+      try { await invoke("save_autoclaw_account", { account: { user_id: acRawId(userId), user_name: a.username || "", email: a.email || "", token: a.autoclaw_token || "", refresh_token: a.autoclaw_refresh_token || "", device_id: a.autoclaw_device_id || "", expires_at: a.autoclaw_expires_at ?? null } }); } catch {}
+    }
     const reward = Number(res?.rewardPoints) || 0;
     const promo = res?.promotionReward;
     const promoPts = promo?.granted ? (Number(promo.points) || 0) : 0;
