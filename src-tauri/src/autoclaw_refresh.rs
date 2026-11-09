@@ -131,7 +131,7 @@ fn cache() -> &'static Mutex<HashMap<String, (AutoClawCredentials, f64)>> {
 fn cached(key: &str) -> Option<AutoClawCredentials> {
     if let Ok(guard) = cache().lock() {
         if let Some((creds, at)) = guard.get(key) {
-            if now_ms() - *at < 10 * 60_000.0 {
+            if now_ms() - *at < 10.0 * 60_000.0 {
                 return Some(creds.clone());
             }
         }

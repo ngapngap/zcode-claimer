@@ -185,6 +185,9 @@ fn persist_refreshed(
     user_id: Option<&str>,
     result: &mut serde_json::Value,
 ) -> Result<(), String> {
+    // Ghi chú (m02688): chỉ persist khi token thực sự đổi (khác orig_token).
+    // Tài khoản local/env không có dòng trong autoclaw-accounts.json -> không
+    // ghi đè, chỉ kèm _refreshed cho frontend tự lưu vào phiên hiện tại.
     if credentials.token == orig_token {
         return Ok(());
     }
@@ -206,14 +209,12 @@ fn persist_refreshed(
         .map(|list| list.iter().any(|a| a.user_id.trim() == user_id))
         .unwrap_or(false);
     if has_account {
-        let user_name = existing
+        let found = existing
             .as_ref()
-            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id))
-            .map(|a| a.user_name.clone())
-            .unwrap_or_default();
-        let email = existing
-            .as_ref()
-            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id))
+            .ok()
+            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id));
+        let user_name = found.map(|a| a.user_name.clone()).unwrap_or_default();
+        let email = found
             .map(|a| a.email.clone())
             .unwrap_or_else(|| credentials.email.clone());
         let record = persistence::AutoClawAccount {
@@ -288,9 +289,10 @@ async fn query_autoclaw_balance(
             result = autoclaw_balance::query_balance(&credentials).await;
         }
     }
-    let mut balance = result?;
-    persist_refreshed(&app, &credentials, &orig_token, user_id.as_deref(), &mut balance)?;
-    Ok(balance)
+    let balance = result?;
+    let mut value = serde_json::to_value(&balance).map_err(|e| e.to_string())?;
+    persist_refreshed(&app, &credentials, &orig_token, user_id.as_deref(), &mut value)?;
+    Ok(value)
 }
 
 /// Diem danh hang ngay AutoClaw (task daily_signin + kiem tra qua hoat dong).
