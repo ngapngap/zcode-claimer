@@ -202,17 +202,18 @@ fn persist_refreshed(
     };
     // Chỉ persist khi file autoclaw-accounts.json đã có dòng này (OAuth).
     // Không có dòng (đọc từ desktop/env) -> không ghi đè, chỉ kèm _refreshed.
-    let dir = app_data_of(app);
-    let existing = persistence::list_autoclaw_accounts(dir);
-    let has_account = existing
-        .as_ref()
-        .map(|list| list.iter().any(|a| a.user_id.trim() == user_id))
-        .unwrap_or(false);
+    let existing = persistence::list_autoclaw_accounts(app_data_of(app));
+    let existing_accounts = match &existing {
+        Ok(list) => list.clone(),
+        Err(_) => Vec::new(),
+    };
+    let has_account = existing_accounts
+        .iter()
+        .any(|a| a.user_id.trim() == user_id);
     if has_account {
-        let found = existing
-            .as_ref()
-            .ok()
-            .and_then(|list| list.iter().find(|a| a.user_id.trim() == user_id));
+        let found = existing_accounts
+            .iter()
+            .find(|a| a.user_id.trim() == user_id);
         let user_name = found.map(|a| a.user_name.clone()).unwrap_or_default();
         let email = found
             .map(|a| a.email.clone())
@@ -226,7 +227,7 @@ fn persist_refreshed(
             device_id: credentials.device_id.clone(),
             expires_at: credentials.expires_at,
         };
-        let _ = persistence::save_autoclaw_account(dir, &record);
+        let _ = persistence::save_autoclaw_account(app_data_of(app), &record);
     }
     attach(result, &refreshed);
     Ok(())
